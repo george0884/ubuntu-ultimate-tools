@@ -242,7 +242,7 @@ Este proyecto está bajo la licencia MIT. Ver archivo LICENSE para más detalles
 
 👤 Autor
 
-Tu Nombre – @tu-usuario
+Oldtheone – @george0884
 
 </div>
 
