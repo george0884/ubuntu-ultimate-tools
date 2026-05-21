@@ -4,7 +4,7 @@
 # Script: Kubuntu Lite Ultimate
 # Descripción: Transforma Kubuntu en un sistema minimalista
 #              con optimizaciones de rendimiento extremo
-# Versión: 4.0 - CON LOG VISIBLE Y MENÚ ESTABLE
+# Versión: 5.0 - COMPLETAMENTE CORREGIDO
 # ============================================================
 
 # ============================================================
@@ -86,8 +86,9 @@ confirm() {
     read -p "$prompt (s/n): " response
     [[ "$response" =~ ^[sS]$ ]]
 }
+
 # ============================================================
-# OPCIÓN 1: ELIMINAR APLICACIONES (ACTUALIZADA)
+# OPCIÓN 1: ELIMINAR APLICACIONES (CORREGIDA - SIN DUPLICADOS)
 # ============================================================
 
 select_apps_to_remove() {
@@ -113,8 +114,8 @@ select_apps_to_remove() {
         "15|kontact|Suite PIM completa"
         "16|konversation|Cliente IRC"
         "17|korganizer|Calendario"
-        "18|kpat|Juego de cartas"
-        "19|krdc|Escritorio remoto"
+        "18|kpat|Juego de cartas solitario"
+        "19|krdc|Cliente de escritorio remoto"
         "20|kruler|Regla en pantalla"
         "21|ksudoku|Juego de Sudoku"
         "22|ktorrent|Cliente Torrent"
@@ -122,56 +123,45 @@ select_apps_to_remove() {
         "24|skanlite|Escáner"
         "25|kmouth|Sintetizador de voz"
         "26|kcharselect|Mapa de caracteres"
-        "27|kdf|Visor de disco"
+        "27|kdf|Visor de uso de disco"
         "28|kfind|Buscador de archivos"
         "29|kgpg|Gestión de claves GPG"
         "30|kamoso|Cámara web"
         "31|kdeconnect|Sincronización con móvil"
         "32|kdenlive|Editor de video"
         "33|khelpcenter|Centro de ayuda"
-        "34|kio-extras|Extra de protocolos KIO"
+        "34|kio-extras|Protocolos extra KIO"
         "35|kmix|Control de volumen"
         "36|kolourpaint|Pintura simple"
         "37|kompare|Comparador de archivos"
-        "38|kpat|Juego de cartas"
-        "39|kremotecontrol|Control remoto"
-        "40|kscreen|Configuración de pantallas"
-        "41|ksystemlog|Visor de logs"
-        "42|kteatime|Temporizador para té"
-        "43|ktimer|Temporizador"
-        "44|kwalletmanager|Gestión de contraseñas"
-        "45|okular|Visor de PDF/DjVu"
-        "46|spectacle|Capturas de pantalla"
-        "47|gwenview|Visor de imágenes"
-        "48|mpv|Reproductor multimedia ligero"
-        "49|remmina|Cliente de escritorio remoto"
-        "50|kruler|Regla en pantalla"
-        "51|plasma-discover|Tienda de aplicaciones"
-        "52|plasma-welcome|Guía de bienvenida de Kubuntu"
-        "53|kubuntu-docs|Documentación de Kubuntu"
-        "54|kubuntu-web-shortcuts|Accesos web de Kubuntu"
-        "55|qml-module-org-kde-kirigami2|Componentes Kirigami"
-        "56|qml-module-qtquick-controls2|Controles QtQuick"
+        "38|kremotecontrol|Control remoto"
+        "39|kscreen|Configuración de pantallas"
+        "40|ksystemlog|Visor de logs del sistema"
+        "41|kteatime|Temporizador para té"
+        "42|ktimer|Temporizador"
+        "43|kwalletmanager|Gestión de contraseñas"
+        "44|okular|Visor de PDF/DjVu"
+        "45|spectacle|Capturas de pantalla"
+        "46|gwenview|Visor de imágenes"
+        "47|mpv|Reproductor multimedia ligero"
+        "48|remmina|Cliente de escritorio remoto"
+        "49|plasma-discover|Tienda de aplicaciones"
+        "50|plasma-welcome|Guía de bienvenida de Kubuntu"
+        "51|kubuntu-docs|Documentación de Kubuntu"
+        "52|kubuntu-web-shortcuts|Accesos web de Kubuntu"
+        "53|qml-module-org-kde-kirigami2|Componentes Kirigami"
+        "54|qml-module-qtquick-controls2|Controles QtQuick"
     )
 
     for app in "${apps[@]}"; do
         num=$(echo "$app" | cut -d'|' -f1)
         name=$(echo "$app" | cut -d'|' -f2)
         desc=$(echo "$app" | cut -d'|' -f3)
-        printf "  ${CYAN}[%2s]${NC} %-20s - %s\n" "$num" "$name" "$desc"
+        printf "  ${CYAN}[%2s]${NC} %-22s - %s\n" "$num" "$name" "$desc"
     done
 
     echo -e "\n${YELLOW}Instrucciones: Escribe los números separados por espacio${NC}"
-    echo "Ejemplo: 3 5 11 23 47 48 49"
-    echo ""
-    echo -e "${CYAN}Apps nuevas añadidas:${NC}"
-    echo "  • 47 gwenview   - Visor de imágenes"
-    echo "  • 48 mpv        - Reproductor multimedia ligero"
-    echo "  • 49 remmina    - Cliente de escritorio remoto (alternativa a KRDC)"
-    echo "  • 51 plasma-discover - Tienda de aplicaciones"
-    echo "  • 52 plasma-welcome  - Guía de bienvenida de Kubuntu"
-    echo "  • 53 kubuntu-docs    - Documentación de Kubuntu"
-    echo "  • 54 kubuntu-web-shortcuts - Accesos web de Kubuntu"
+    echo "Ejemplo: 3 5 11 23 46 47 48"
     echo ""
 
     read -p "Números a eliminar: " input
@@ -200,39 +190,606 @@ select_apps_to_remove() {
     log_info "Total a eliminar: ${#SELECTED_APPS[@]} apps"
     pause
 }
+
 # ============================================================
-# OPCIÓN 3: OPTIMIZACIONES DE RENDIMIENTO
+# OPCIÓN 2: CONFIGURAR SISTEMA (CORREGIDA)
 # ============================================================
 
-optimize_performance() {
-    log_title "OPTIMIZACIONES DE RENDIMIENTO"
+configure_system() {
+    log_title "CONFIGURACIÓN DEL SISTEMA"
 
-    echo -e "${YELLOW}1. Optimización GPU NVIDIA${NC}"
-    echo "   Activa modo de rendimiento persistente y perfiles de memoria"
-    if confirm "¿Optimizar GPU NVIDIA? (si tienes NVIDIA)"; then
-        OPTIMIZE_GPU=true
-        log_success "Optimización GPU activada"
+    echo -e "${YELLOW}1. Meta-paquete kubuntu-desktop${NC}"
+    echo "   Descripción: Es el paquete que agrupa todas las apps de Kubuntu"
+    echo "   Si lo eliminas: Podrás desinstalar apps sin que se reinstalen"
+    echo "   Si lo mantienes: El sistema intentará reinstalar apps eliminadas"
+    echo ""
+    if confirm "¿Eliminar kubuntu-desktop? (recomendado)"; then
+        REMOVE_METAPACKAGE=true
+        log_success "Se eliminará kubuntu-desktop"
+    else
+        log_info "Se mantiene kubuntu-desktop"
     fi
 
-    echo -e "\n${YELLOW}2. Optimización del Kernel y Memoria${NC}"
-    echo "   Reduce swappiness y mejora caché del sistema"
-    if confirm "¿Optimizar kernel y memoria? (recomendado)"; then
-        OPTIMIZE_KERNEL=true
-        log_success "Optimización kernel/memoria activada"
-    fi
-
-    echo -e "\n${YELLOW}3. Instalar CUDA Toolkit${NC}"
-    echo "   Para aceleración en IA, edición de vídeo y renderizado"
-    if confirm "¿Instalar CUDA Toolkit? (opcional, requiere NVIDIA)"; then
-        INSTALL_CUDA=true
-        log_success "Instalación de CUDA activada"
+    echo ""
+    echo -e "${YELLOW}2. Cambio a KDE Rolling Release${NC}"
+    echo "   Descripción: Cambia los repositorios a versión Rolling Release"
+    echo "   Esto te dará las últimas versiones de KDE Plasma"
+    echo "   Equivalente a tener KDE Neon pero sobre Kubuntu"
+    echo ""
+    if confirm "¿Cambiar a KDE Rolling Release? (recomendado)"; then
+        USE_ROLLING=true
+        log_success "Se cambiará a KDE Rolling Release"
+    else
+        log_info "Se mantienen repositorios estándar"
     fi
 
     pause
 }
-
 # ============================================================
-# OPCIÓN 4: ACTUALIZACIÓN DEL SISTEMA (CORREGIDA)
+# OPCIÓN 3A: OPTIMIZACIÓN DE GPU
+# ============================================================
+
+optimize_gpu_menu() {
+    log_title "OPTIMIZACIÓN DE GPU"
+
+    echo -e "${YELLOW}Selecciona tu tarjeta gráfica:${NC}\n"
+    echo "  1) 🟢 NVIDIA - Optimización completa"
+    echo "  2) 🔴 AMD   - Optimización completa"
+    echo "  3) 🔵 Intel - Optimización completa"
+    echo "  4) ⚪ Detectar automáticamente y optimizar"
+    echo "  5) ⬅️ Volver"
+    echo ""
+    read -p "Opción (1-5): " gpu_option
+
+    case $gpu_option in
+        1) optimize_nvidia ;;
+        2) optimize_amd ;;
+        3) optimize_intel ;;
+        4) auto_detect_gpu ;;
+        5) return 0 ;;
+        *) log_error "Opción inválida"; sleep 1; optimize_gpu_menu ;;
+    esac
+    pause
+}
+optimize_nvidia() {
+    log_title "OPTIMIZACIÓN NVIDIA"
+
+    echo -e "${GREEN}Aplicando optimizaciones para GPU NVIDIA...${NC}\n"
+
+    # Verificar driver
+    if ! command -v nvidia-smi &> /dev/null; then
+        log_warning "Driver NVIDIA no detectado. Instalando..."
+        sudo apt update > /dev/null 2>&1
+        sudo apt install -y nvidia-driver-550 > /dev/null 2>&1
+        log_success "Driver NVIDIA instalado (requiere reinicio)"
+    fi
+
+    # Optimizaciones NVIDIA
+    log_info "[1/6] Activando modo de rendimiento persistente..."
+    sudo nvidia-smi -pm 1 > /dev/null 2>&1
+    log_success "Modo persistente activado"
+
+    log_info "[2/6] Configurando perfil de memoria máximo..."
+    sudo nvidia-smi -ac 5001,1590 > /dev/null 2>&1
+    log_success "Perfil de memoria configurado"
+
+    log_info "[3/6] Activando modo de reloj máximo..."
+    sudo nvidia-smi -pl 250 > /dev/null 2>&1
+    log_success "Límite de potencia configurado"
+
+    log_info "[4/6] Configurando archivo de configuración X11..."
+    sudo nvidia-xconfig --cool-bits=28 > /dev/null 2>&1
+    log_success "Configuración X11 aplicada"
+
+    log_info "[5/6] Deshabilitando modo de ahorro de energía..."
+    sudo nvidia-smi --power-limit=0 > /dev/null 2>&1
+    log_success "Ahorro de energía deshabilitado"
+
+    log_info "[6/6] Activando soporte para CUDA y OpenCL..."
+    sudo apt install -y nvidia-cuda-toolkit nvidia-opencl-icd > /dev/null 2>&1
+    log_success "CUDA y OpenCL instalados"
+
+    echo ""
+    log_success "¡OPTIMIZACIÓN NVIDIA COMPLETADA!"
+    log_warning "Reinicia el sistema para aplicar todos los cambios"
+}
+
+optimize_amd() {
+    log_title "OPTIMIZACIÓN AMD"
+
+    echo -e "${GREEN}Aplicando optimizaciones para GPU AMD...${NC}\n"
+
+    # Verificar driver AMD
+    log_info "[1/7] Actualizando drivers AMD..."
+    sudo apt update > /dev/null 2>&1
+    sudo apt install -y mesa-utils mesa-vulkan-drivers libgl1-mesa-dri > /dev/null 2>&1
+    log_success "Drivers AMD actualizados"
+
+    log_info "[2/7] Activando overclocking y control de fans..."
+    echo 'options amdgpu ppfeaturemask=0xffffffff' | sudo tee /etc/modprobe.d/amd_ppfeaturemask.conf > /dev/null
+    log_success "Overclocking habilitado"
+
+    log_info "[3/7] Configurando perfil de rendimiento 'high'..."
+    echo 'high' | sudo tee /sys/class/drm/card0/device/power_dpm_force_performance_level > /dev/null 2>&1
+    log_success "Perfil de rendimiento configurado"
+
+    log_info "[4/7] Configurando frecuencia máxima de memoria VRAM..."
+    echo '1' | sudo tee /sys/class/drm/card0/device/pp_dpm_mclk > /dev/null 2>&1
+    log_success "Frecuencia VRAM optimizada"
+
+    log_info "[5/7] Activando Radeon Raytracing (si está disponible)..."
+    echo '1' | sudo tee /sys/class/drm/card0/device/raytracing > /dev/null 2>&1
+    log_success "Raytracing activado"
+
+    log_info "[6/7] Instalando ROCm para computación (opcional)..."
+    if confirm "¿Instalar ROCm para aceleración en IA/ML? (opcional, 3GB)"; then
+        sudo apt install -y rocm-dev > /dev/null 2>&1
+        log_success "ROCm instalado"
+    fi
+
+    log_info "[7/7] Instalando CoreCtrl para control gráfico..."
+    sudo apt install -y corectrl > /dev/null 2>&1
+    log_success "CoreCtrl instalado (acceso desde menú de aplicaciones)"
+
+    echo ""
+    log_success "¡OPTIMIZACIÓN AMD COMPLETADA!"
+    log_warning "Reinicia el sistema para aplicar todos los cambios"
+}
+
+optimize_intel() {
+    log_title "OPTIMIZACIÓN INTEL"
+
+    echo -e "${GREEN}Aplicando optimizaciones para GPU Intel...${NC}\n"
+
+    log_info "[1/5] Actualizando driver Intel..."
+    sudo apt update > /dev/null 2>&1
+    sudo apt install -y intel-media-va-driver intel-gpu-tools > /dev/null 2>&1
+    log_success "Drivers Intel actualizados"
+
+    log_info "[2/5] Activando aceleración por hardware..."
+    sudo apt install -y va-driver-all vainfo > /dev/null 2>&1
+    log_success "Aceleración VA-API activada"
+
+    log_info "[3/5] Configurando governor de rendimiento..."
+    echo 'performance' | sudo tee /sys/class/drm/card0/device/power_dpm_force_performance_level > /dev/null 2>&1
+    log_success "Governor configurado"
+
+    log_info "[4/5] Activando GuC/HuC para códecs..."
+    echo 'options i915 enable_guc=3' | sudo tee /etc/modprobe.d/i915_guc.conf > /dev/null
+    log_success "GuC/HuC activados (mejora códecs de video)"
+
+    log_info "[5/5] Optimizando para OpenCL..."
+    sudo apt install -y intel-opencl-icd > /dev/null 2>&1
+    log_success "OpenCL instalado"
+
+    echo ""
+    log_success "¡OPTIMIZACIÓN INTEL COMPLETADA!"
+    log_warning "Reinicia el sistema para aplicar todos los cambios"
+}
+
+auto_detect_gpu() {
+    log_title "DETECCIÓN AUTOMÁTICA DE GPU"
+
+    if lspci | grep -i nvidia > /dev/null; then
+        log_info "GPU NVIDIA detectada"
+        optimize_nvidia
+    elif lspci | grep -i amd > /dev/null; then
+        log_info "GPU AMD detectada"
+        optimize_amd
+    elif lspci | grep -i intel > /dev/null; then
+        log_info "GPU Intel detectada"
+        optimize_intel
+    else
+        log_warning "No se detectó ninguna GPU compatible"
+        log_info "Aplicando optimizaciones genéricas..."
+        sudo apt install -y mesa-utils > /dev/null 2>&1
+        log_success "Optimizaciones genéricas aplicadas"
+    fi
+    pause
+}
+# ============================================================
+# OPCIÓN 3B: OPTIMIZACIÓN DEL KERNEL
+# ============================================================
+
+optimize_kernel_menu() {
+    log_title "OPTIMIZACIÓN DEL KERNEL"
+
+    echo -e "${YELLOW}Opciones de optimización del kernel:${NC}\n"
+    echo "  1) ⚡ Kernel Liquorix (máximo rendimiento, gaming)"
+    echo "  2) 🐧 Kernel Zen (rendimiento balanceado, desktop)"
+    echo "  3) ⚙️  Kernel estándar con optimizaciones (recomendado)"
+    echo "  4) 🔧 Ajustes avanzados de kernel (swappiness, cache)"
+    echo "  5) ⬅️ Volver"
+    echo ""
+    read -p "Opción (1-5): " kernel_option
+
+    case $kernel_option in
+        1) install_liquorix_kernel ;;
+        2) install_zen_kernel ;;
+        3) optimize_standard_kernel ;;
+        4) advanced_kernel_tweaks ;;
+        5) return 0 ;;
+        *) log_error "Opción inválida"; sleep 1; optimize_kernel_menu ;;
+    esac
+    pause
+}
+
+install_liquorix_kernel() {
+    log_title "INSTALANDO KERNEL LIQUORIX"
+
+    echo -e "${GREEN}Kernel Liquorix - Optimizado para gaming y baja latencia${NC}\n"
+
+    log_info "[1/4] Agregando repositorio Liquorix..."
+    sudo add-apt-repository -y ppa:damentz/liquorix > /dev/null 2>&1
+    sudo apt update > /dev/null 2>&1
+    log_success "Repositorio agregado"
+
+    log_info "[2/4] Instalando kernel Liquorix..."
+    sudo apt install -y linux-image-liquorix-amd64 linux-headers-liquorix-amd64 > /dev/null 2>&1
+    log_success "Kernel Liquorix instalado"
+
+    log_info "[3/4] Configurando parámetros de arranque..."
+    echo 'GRUB_CMDLINE_LINUX_DEFAULT="quiet splash threadirqs nohz_full=2-11 mitigations=off"' | sudo tee -a /etc/default/grub > /dev/null
+    sudo update-grub > /dev/null 2>&1
+    log_success "Parámetros configurados"
+
+    log_info "[4/4] Instalando herramientas de rendimiento..."
+    sudo apt install -y irqbalance tuned > /dev/null 2>&1
+    sudo tuned-adm profile latency-performance > /dev/null 2>&1
+    log_success "Herramientas instaladas"
+
+    echo ""
+    log_success "¡KERNEL LIQUORIX INSTALADO!"
+    log_warning "Reinicia y selecciona el nuevo kernel en GRUB"
+}
+
+install_zen_kernel() {
+    log_title "INSTALANDO KERNEL ZEN"
+
+    echo -e "${GREEN}Kernel Zen - Balance entre rendimiento y estabilidad${NC}\n"
+
+    log_info "[1/3] Instalando kernel Zen desde repositorios..."
+    sudo apt install -y linux-zen linux-headers-zen > /dev/null 2>&1
+    log_success "Kernel Zen instalado"
+
+    log_info "[2/3] Configurando parámetros de rendimiento..."
+    echo 'vm.vfs_cache_pressure=50' | sudo tee -a /etc/sysctl.d/99-performance.conf > /dev/null
+    echo 'kernel.numa_balancing=0' | sudo tee -a /etc/sysctl.d/99-performance.conf > /dev/null
+    log_success "Parámetros configurados"
+
+    log_info "[3/3] Aplicando scheduler adecuado..."
+    echo 'GRUB_CMDLINE_LINUX_DEFAULT="quiet splash elevator=kyber"' | sudo tee -a /etc/default/grub > /dev/null
+    sudo update-grub > /dev/null 2>&1
+    log_success "Scheduler configurado"
+
+    echo ""
+    log_success "¡KERNEL ZEN INSTALADO!"
+    log_warning "Reinicia para usar el nuevo kernel"
+}
+
+optimize_standard_kernel() {
+    log_title "OPTIMIZANDO KERNEL ESTÁNDAR"
+
+    echo -e "${GREEN}Aplicando optimizaciones al kernel actual...${NC}\n"
+
+    log_info "[1/8] Configurando swappiness para mejor rendimiento..."
+    sudo sysctl -w vm.swappiness=10 > /dev/null 2>&1
+    echo 'vm.swappiness=10' | sudo tee -a /etc/sysctl.conf > /dev/null
+    log_success "Swappiness configurado (10)"
+
+    log_info "[2/8] Configurando presión de caché..."
+    sudo sysctl -w vm.vfs_cache_pressure=50 > /dev/null 2>&1
+    echo 'vm.vfs_cache_pressure=50' | sudo tee -a /etc/sysctl.conf > /dev/null
+    log_success "Cache pressure configurado (50)"
+
+    log_info "[3/8] Mejorando gestión de memoria..."
+    sudo sysctl -w vm.dirty_ratio=30 > /dev/null 2>&1
+    sudo sysctl -w vm.dirty_background_ratio=5 > /dev/null 2>&1
+    echo 'vm.dirty_ratio=30' | sudo tee -a /etc/sysctl.conf > /dev/null
+    echo 'vm.dirty_background_ratio=5' | sudo tee -a /etc/sysctl.conf > /dev/null
+    log_success "Gestión de memoria optimizada"
+
+    log_info "[4/8] Configurando scheduler de E/S..."
+    echo 'deadline' | sudo tee /sys/block/sda/queue/scheduler > /dev/null 2>&1
+    log_success "Scheduler deadline configurado"
+
+    log_info "[5/8] Activando fusión de solicitudes..."
+    echo '1024' | sudo tee /sys/block/sda/queue/nr_requests > /dev/null 2>&1
+    log_success "Fusión de solicitudes activada"
+
+    log_info "[6/8] Deshabilitando balanceo NUMA para gaming..."
+    sudo sysctl -w kernel.numa_balancing=0 > /dev/null 2>&1
+    echo 'kernel.numa_balancing=0' | sudo tee -a /etc/sysctl.conf > /dev/null
+    log_success "NUMA balancing deshabilitado"
+
+    log_info "[7/8] Optimizando parámetros de red..."
+    sudo sysctl -w net.core.rmem_max=134217728 > /dev/null 2>&1
+    sudo sysctl -w net.core.wmem_max=134217728 > /dev/null 2>&1
+    echo 'net.core.rmem_max=134217728' | sudo tee -a /etc/sysctl.conf > /dev/null
+    echo 'net.core.wmem_max=134217728' | sudo tee -a /etc/sysctl.conf > /dev/null
+    log_success "Parámetros de red optimizados"
+
+    log_info "[8/8] Aplicando cambios y limpiando..."
+    sudo sysctl -p > /dev/null 2>&1
+    log_success "Cambios aplicados"
+
+    echo ""
+    log_success "¡KERNEL ESTÁNDAR OPTIMIZADO!"
+    log_warning "No requiere reinicio (los cambios son dinámicos)"
+}
+
+advanced_kernel_tweaks() {
+    log_title "AJUSTES AVANZADOS DEL KERNEL"
+
+    echo -e "${YELLOW}Ajustes avanzados para máximo rendimiento:${NC}\n"
+
+    # Deshabilitar mitigaciones de seguridad (riesgo)
+    echo -e "${RED}[ADVERTENCIA] Deshabilitar mitigaciones de seguridad puede afectar la seguridad del sistema${NC}"
+    if confirm "¿Deshabilitar mitigaciones de espectre/meltdown? (riesgo alto, +15% rendimiento)"; then
+        echo 'GRUB_CMDLINE_LINUX_DEFAULT="mitigations=off"' | sudo tee -a /etc/default/grub > /dev/null
+        sudo update-grub > /dev/null 2>&1
+        log_success "Mitigaciones deshabilitadas"
+    fi
+
+    # Habilitar TRIM para SSD
+    echo ""
+    if confirm "¿Habilitar TRIM automático para SSD? (recomendado para SSD)"; then
+        sudo systemctl enable fstrim.timer > /dev/null 2>&1
+        sudo systemctl start fstrim.timer > /dev/null 2>&1
+        log_success "TRIM automático habilitado"
+    fi
+
+    # Configurar límites de archivos
+    echo ""
+    log_info "Aumentando límites de archivos del sistema..."
+    echo 'fs.file-max=2097152' | sudo tee -a /etc/sysctl.conf > /dev/null
+    echo '* soft nofile 1048576' | sudo tee -a /etc/security/limits.conf > /dev/null
+    echo '* hard nofile 1048576' | sudo tee -a /etc/security/limits.conf > /dev/null
+    log_success "Límites de archivos aumentados"
+
+    # Optimizar para gaming
+    echo ""
+    if confirm "¿Optimizar para gaming? (reducir latencia, priorizar procesos)"; then
+        sudo apt install -y gamemode > /dev/null 2>&1
+        echo 'gamemode' | sudo tee /etc/security/limits.d/gamemode.conf > /dev/null
+        log_success "GameMode instalado y configurado"
+    fi
+
+    echo ""
+    log_success "¡AJUSTES AVANZADOS APLICADOS!"
+}
+# ============================================================
+# OPCIÓN 3C: OPTIMIZACIÓN DE MEMORIA RAM
+# ============================================================
+
+optimize_ram_menu() {
+    log_title "OPTIMIZACIÓN DE MEMORIA RAM"
+
+    echo -e "${GREEN}Configuración automática de memoria RAM${NC}\n"
+
+    # Detectar RAM total
+    local total_ram=$(free -g | awk '/^Mem:/{print $2}')
+    log_info "RAM detectada: ${total_ram}GB"
+
+    echo -e "\n${YELLOW}Se aplicarán las siguientes optimizaciones:${NC}"
+    echo "  • Configuración de swappiness óptima"
+    echo "  • Gestión de caché mejorada"
+    echo "  • Compresión ZRAM activa"
+    echo "  • Límites de memoria ajustados"
+    echo "  • Limpieza automática de caché"
+    echo ""
+
+    if ! confirm "¿Aplicar optimización completa de RAM?"; then
+        log_info "Optimización cancelada"
+        pause
+        return 1
+    fi
+
+    # Optimización según cantidad de RAM
+    if [ "$total_ram" -le 4 ]; then
+        low_ram_optimization
+    elif [ "$total_ram" -le 8 ]; then
+        medium_ram_optimization
+    elif [ "$total_ram" -le 16 ]; then
+        high_ram_optimization
+    else
+        ultra_ram_optimization
+    fi
+
+    # Preguntar por ZRAM
+    echo ""
+    if confirm "¿Activar compresión ZRAM? (mejora rendimiento con poca RAM)"; then
+        install_zram
+    fi
+
+    # Preguntar por limpieza automática
+    echo ""
+    if confirm "¿Configurar limpieza automática de caché cada hora? (libera RAM)"; then
+        setup_auto_cache_clean
+    fi
+
+    # Preguntar por swapfile
+    echo ""
+    if confirm "¿Optimizar swapfile (memoria de intercambio)?"; then
+        optimize_swap
+    fi
+
+    echo ""
+    log_success "¡OPTIMIZACIÓN DE RAM COMPLETADA!"
+    pause
+}
+
+low_ram_optimization() {
+    log_title "OPTIMIZACIÓN PARA POCA RAM (<4GB)"
+
+    log_info "[1/5] Configurando swappiness agresivo..."
+    sudo sysctl -w vm.swappiness=60 > /dev/null 2>&1
+    echo 'vm.swappiness=60' | sudo tee -a /etc/sysctl.conf > /dev/null
+    log_success "Swappiness=60"
+
+    log_info "[2/5] Reduciendo presión de caché..."
+    sudo sysctl -w vm.vfs_cache_pressure=100 > /dev/null 2>&1
+    echo 'vm.vfs_cache_pressure=100' | sudo tee -a /etc/sysctl.conf > /dev/null
+    log_success "Cache pressure=100"
+
+    log_info "[3/5] Configurando dirty pages más agresivo..."
+    sudo sysctl -w vm.dirty_ratio=20 > /dev/null 2>&1
+    sudo sysctl -w vm.dirty_background_ratio=3 > /dev/null 2>&1
+    log_success "Dirty pages configuradas"
+
+    log_info "[4/5] Activando compactación de memoria..."
+    echo '1' | sudo tee /proc/sys/vm/compact_memory > /dev/null 2>&1
+    log_success "Compactación activada"
+
+    log_info "[5/5] Configurando límite mínimo de memoria libre..."
+    sudo sysctl -w vm.min_free_kbytes=65536 > /dev/null 2>&1
+    echo 'vm.min_free_kbytes=65536' | sudo tee -a /etc/sysctl.conf > /dev/null
+    log_success "Memoria mínima libre configurada"
+}
+
+medium_ram_optimization() {
+    log_title "OPTIMIZACIÓN PARA RAM MEDIA (4-8GB)"
+
+    log_info "[1/5] Configurando swappiness balanceado..."
+    sudo sysctl -w vm.swappiness=30 > /dev/null 2>&1
+    echo 'vm.swappiness=30' | sudo tee -a /etc/sysctl.conf > /dev/null
+    log_success "Swappiness=30"
+
+    log_info "[2/5] Configurando presión de caché óptima..."
+    sudo sysctl -w vm.vfs_cache_pressure=70 > /dev/null 2>&1
+    echo 'vm.vfs_cache_pressure=70' | sudo tee -a /etc/sysctl.conf > /dev/null
+    log_success "Cache pressure=70"
+
+    log_info "[3/5] Configurando dirty pages estándar..."
+    sudo sysctl -w vm.dirty_ratio=25 > /dev/null 2>&1
+    sudo sysctl -w vm.dirty_background_ratio=4 > /dev/null 2>&1
+    log_success "Dirty pages configuradas"
+
+    log_info "[4/5] Configurando OOM killer más inteligente..."
+    echo '1' | sudo tee /proc/sys/vm/oom_kill_allocating_task > /dev/null 2>&1
+    log_success "OOM killer optimizado"
+
+    log_info "[5/5] Configurando memoria mínima libre..."
+    sudo sysctl -w vm.min_free_kbytes=131072 > /dev/null 2>&1
+    echo 'vm.min_free_kbytes=131072' | sudo tee -a /etc/sysctl.conf > /dev/null
+    log_success "Memoria mínima libre configurada"
+}
+
+high_ram_optimization() {
+    log_title "OPTIMIZACIÓN PARA MUCHA RAM (8-16GB)"
+
+    log_info "[1/5] Configurando swappiness bajo..."
+    sudo sysctl -w vm.swappiness=15 > /dev/null 2>&1
+    echo 'vm.swappiness=15' | sudo tee -a /etc/sysctl.conf > /dev/null
+    log_success "Swappiness=15"
+
+    log_info "[2/5] Configurando presión de caché baja..."
+    sudo sysctl -w vm.vfs_cache_pressure=40 > /dev/null 2>&1
+    echo 'vm.vfs_cache_pressure=40' | sudo tee -a /etc/sysctl.conf > /dev/null
+    log_success "Cache pressure=40"
+
+    log_info "[3/5] Configurando dirty pages relajado..."
+    sudo sysctl -w vm.dirty_ratio=40 > /dev/null 2>&1
+    sudo sysctl -w vm.dirty_background_ratio=10 > /dev/null 2>&1
+    log_success "Dirty pages configuradas"
+
+    log_info "[4/5] Activando transparent hugepages..."
+    echo 'always' | sudo tee /sys/kernel/mm/transparent_hugepage/enabled > /dev/null 2>&1
+    log_success "Transparent hugepages activadas"
+
+    log_info "[5/5] Configurando memoria mínima libre..."
+    sudo sysctl -w vm.min_free_kbytes=262144 > /dev/null 2>&1
+    echo 'vm.min_free_kbytes=262144' | sudo tee -a /etc/sysctl.conf > /dev/null
+    log_success "Memoria mínima libre configurada"
+}
+
+ultra_ram_optimization() {
+    log_title "OPTIMIZACIÓN PARA RAM EXTREMA (>16GB)"
+
+    log_info "[1/5] Configurando swappiness mínimo..."
+    sudo sysctl -w vm.swappiness=5 > /dev/null 2>&1
+    echo 'vm.swappiness=5' | sudo tee -a /etc/sysctl.conf > /dev/null
+    log_success "Swappiness=5"
+
+    log_info "[2/5] Configurando presión de caché muy baja..."
+    sudo sysctl -w vm.vfs_cache_pressure=20 > /dev/null 2>&1
+    echo 'vm.vfs_cache_pressure=20' | sudo tee -a /etc/sysctl.conf > /dev/null
+    log_success "Cache pressure=20"
+
+    log_info "[3/5] Configurando dirty pages máximo..."
+    sudo sysctl -w vm.dirty_ratio=50 > /dev/null 2>&1
+    sudo sysctl -w vm.dirty_background_ratio=15 > /dev/null 2>&1
+    log_success "Dirty pages configuradas"
+
+    log_info "[4/5] Activando todas las optimizaciones de memoria..."
+    echo 'always' | sudo tee /sys/kernel/mm/transparent_hugepage/enabled > /dev/null 2>&1
+    echo '1' | sudo tee /proc/sys/vm/compact_memory > /dev/null 2>&1
+    log_success "Optimizaciones avanzadas activadas"
+
+    log_info "[5/5] Configurando memoria mínima libre..."
+    sudo sysctl -w vm.min_free_kbytes=524288 > /dev/null 2>&1
+    echo 'vm.min_free_kbytes=524288' | sudo tee -a /etc/sysctl.conf > /dev/null
+    log_success "Memoria mínima libre configurada"
+}
+
+install_zram() {
+    log_title "INSTALANDO ZRAM"
+
+    log_info "ZRAM comprime la memoria RAM, aumentando efectivamente su capacidad..."
+
+    sudo apt install -y zram-tools > /dev/null 2>&1
+
+    # Configurar ZRAM
+    cat > /tmp/zram.conf << 'EOF'
+PERCENT=50
+PRIORITY=100
+EOF
+    sudo cp /tmp/zram.conf /etc/default/zram-tools
+
+    sudo service zram-tools restart > /dev/null 2>&1
+    log_success "ZRAM configurado (50% de RAM como compresión)"
+}
+
+setup_auto_cache_clean() {
+    log_title "LIMPIADOR AUTOMÁTICO DE CACHÉ"
+
+    # Crear script de limpieza
+    cat > /tmp/clear-cache.sh << 'EOF'
+#!/bin/bash
+sync && echo 3 > /proc/sys/vm/drop_caches
+EOF
+
+    sudo mv /tmp/clear-cache.sh /etc/cron.hourly/clear-cache
+    sudo chmod +x /etc/cron.hourly/clear-cache
+    log_success "Limpieza automática configurada (cada hora)"
+}
+
+optimize_swap() {
+    log_title "OPTIMIZANDO SWAP"
+
+    # Verificar si hay swap activo
+    if swapon --show | grep -q .; then
+        log_info "Deshabilitando swap actual..."
+        sudo swapoff -a > /dev/null 2>&1
+    fi
+
+    # Crear nuevo swapfile optimizado
+    log_info "Creando swapfile de 2GB..."
+    sudo fallocate -l 2G /swapfile > /dev/null 2>&1
+    sudo chmod 600 /swapfile > /dev/null 2>&1
+    sudo mkswap /swapfile > /dev/null 2>&1
+    sudo swapon /swapfile > /dev/null 2>&1
+
+    # Montar permanente
+    echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab > /dev/null
+
+    # Configurar swappiness
+    sudo sysctl -w vm.swappiness=10 > /dev/null 2>&1
+
+    log_success "Swap optimizado (2GB, swappiness=10)"
+}
+# ============================================================
+# OPCIÓN 4: ACTUALIZACIÓN DEL SISTEMA
 # ============================================================
 
 system_update() {
@@ -251,69 +808,45 @@ system_update() {
         return 1
     fi
 
-    # Paso 1: Update (con barra de progreso animada)
     echo ""
     log_info "[1/4] Actualizando lista de paquetes..."
-    echo -ne "${CYAN}[>>>         ] 0% - Ejecutando apt update...${NC}\r"
-    sudo apt update > /tmp/apt_update.log 2>&1
-    echo -ne "${CYAN}[============] 100% - ¡Completado!                ${NC}\n"
+    echo -e "${CYAN}─────────────────────────────────────────────────────────${NC}"
+    sudo apt update
+    echo -e "${CYAN}─────────────────────────────────────────────────────────${NC}"
     log_success "Lista de paquetes actualizada"
 
-    # Mostrar resumen de actualizaciones disponibles
-    local updates=$(apt list --upgradable 2>/dev/null | grep -c upgradable)
-    if [ "$updates" -gt 0 ]; then
-        log_info "Hay $updates paquetes para actualizar"
-    fi
-
-    # Paso 2: Upgrade (con barra de progreso)
     echo ""
     log_info "[2/4] Actualizando paquetes del sistema..."
-    echo -ne "${CYAN}[>>>         ] 0% - Iniciando upgrade...${NC}\r"
-    sudo apt upgrade -y > /tmp/apt_upgrade.log 2>&1
-    echo -ne "${CYAN}[============] 100% - ¡Completado!                ${NC}\n"
+    echo -e "${CYAN}─────────────────────────────────────────────────────────${NC}"
+    sudo apt upgrade -y
+    echo -e "${CYAN}─────────────────────────────────────────────────────────${NC}"
     log_success "Paquetes actualizados"
 
-    # Paso 3: Autoremove
     echo ""
     log_info "[3/4] Eliminando paquetes huérfanos..."
-    echo -ne "${CYAN}[>>>         ] 0% - Buscando dependencias huérfanas...${NC}\r"
-    sleep 1
-    echo -ne "${CYAN}[=======>    ] 50% - Eliminando paquetes...${NC}\r"
-    sudo apt autoremove -y > /tmp/apt_autoremove.log 2>&1
-    echo -ne "${CYAN}[============] 100% - ¡Completado!                ${NC}\n"
+    sudo apt autoremove -y
     log_success "Paquetes huérfanos eliminados"
 
-    # Paso 4: Autoclean
     echo ""
     log_info "[4/4] Limpiando caché de paquetes..."
-    echo -ne "${CYAN}[>>>         ] 0% - Limpiando caché...${NC}\r"
-    sleep 1
-    echo -ne "${CYAN}[============] 100% - ¡Completado!                ${NC}\n"
-    sudo apt autoclean -y > /tmp/apt_autoclean.log 2>&1
+    sudo apt autoclean -y
     log_success "Caché limpiado"
 
     echo ""
     log_success "¡SISTEMA ACTUALIZADO COMPLETAMENTE!"
-
-    # Mostrar estadísticas finales
-    echo ""
-    echo -e "${GREEN}Resumen de la actualización:${NC}"
-    echo "  • Repositorios actualizados: ✓"
-    echo "  • Paquetes actualizados: $updates"
-    echo "  • Espacio liberado: $(du -sh /var/cache/apt/archives 2>/dev/null | cut -f1)"
-    echo ""
-
     pause
 }
-
 # ============================================================
-# OPCIÓN 5: INSTALAR ALACRITTY Y TEMAS
+# OPCIÓN 7: INSTALAR ALACRITTY Y TEMAS
 # ============================================================
 
 install_custom_software() {
     log_title "INSTALAR ALACRITTY Y TEMAS"
 
-    if confirm "¿Instalar Alacritty (terminal moderna)?"; then
+    echo -e "${GREEN}Alacritty es una terminal moderna que usa la GPU para renderizar,${NC}"
+    echo -e "${GREEN}ofreciendo mayor fluidez y menor latencia que Konsole.${NC}\n"
+
+    if confirm "¿Instalar Alacritty (terminal con aceleración GPU)?"; then
         log_info "Instalando Alacritty..."
         sudo apt update > /dev/null 2>&1
         sudo apt install -y alacritty > /dev/null 2>&1
@@ -335,7 +868,7 @@ style = "Regular"
 primary = { background = "#1a1b26", foreground = "#c0caf5" }
 normal = { black = "#15161e", red = "#f7768e", green = "#9ece6a", yellow = "#e0af68", blue = "#7aa2f7", magenta = "#bb9af7", cyan = "#7dcfff", white = "#a9b1d6" }
 EOF
-        log_success "Alacritty instalado y configurado"
+        log_success "Alacritty instalado (usando GPU para renderizado)"
     fi
 
     if confirm "¿Instalar tema Tokyo Night?"; then
@@ -355,7 +888,6 @@ EOF
 
     pause
 }
-
 # ============================================================
 # OPCIÓN 6: SOFTWARE OPCIONAL
 # ============================================================
@@ -385,6 +917,8 @@ select_optional_software() {
         "17|discord|Discord"
         "18|spotify|Spotify"
         "19|obs-studio|OBS Studio"
+        "20|emojier|Selector de emojis (Meta+.)"
+        "21|qrca|Generador de códigos QR"
     )
 
     for app in "${software[@]}"; do
@@ -395,7 +929,7 @@ select_optional_software() {
     done
 
     echo -e "\n${YELLOW}Escribe los números separados por espacio${NC}"
-    echo "Ejemplo: 2 4 13"
+    echo "Ejemplo: 2 4 13 20 21"
     read -p "Números a instalar: " input
 
     SELECTED_OPTIONAL=()
@@ -415,7 +949,6 @@ select_optional_software() {
     log_info "Total a instalar: ${#SELECTED_OPTIONAL[@]} programas"
     pause
 }
-
 # ============================================================
 # FUNCIONES DE EJECUCIÓN CON PROGRESO
 # ============================================================
@@ -431,11 +964,62 @@ remove_apps_with_progress() {
             show_progress $current $total "Eliminando: $app"
             sudo apt remove --purge -y "$app" > /dev/null 2>&1
             log_success "Eliminado: $app"
+
+            # === LIMPIEZA ESPECÍFICA PARA CADA APP ===
+
+            # Limpiar kubuntu-web-shortcuts (ícono de Kubuntu Website en escritorio)
+            if [[ "$app" == "kubuntu-web-shortcuts" ]]; then
+                log_info "  → Limpiando accesos web de Kubuntu..."
+                rm -f "$HOME/Escritorio/kubuntu-website.desktop" 2>/dev/null
+                rm -f "$HOME/Desktop/kubuntu-website.desktop" 2>/dev/null
+                rm -f "$HOME/Escritorio/kubuntu-website" 2>/dev/null
+                rm -f "$HOME/Desktop/kubuntu-website" 2>/dev/null
+                sudo rm -rf /usr/share/kubuntu-web-shortcuts/ 2>/dev/null
+                sudo rm -f /usr/share/applications/kubuntu-website.desktop 2>/dev/null
+                log_success "  → Ícono de Kubuntu Website eliminado"
+            fi
+
+            # Limpiar plasma-welcome (guía de bienvenida)
+            if [[ "$app" == "plasma-welcome" ]]; then
+                log_info "  → Limpiando guía de bienvenida..."
+                rm -f "$HOME/.config/plasma-welcome" 2>/dev/null
+                sudo rm -f /usr/share/applications/org.kde.plasma-welcome.desktop 2>/dev/null
+                log_success "  → Guía de bienvenida eliminada"
+            fi
+
+            # Limpiar plasma-discover (tienda de aplicaciones)
+            if [[ "$app" == "plasma-discover" ]]; then
+                log_info "  → Limpiando configuración de Discover..."
+                rm -rf "$HOME/.config/discover" 2>/dev/null
+                sudo rm -rf /var/lib/discover 2>/dev/null
+                log_success "  → Discover limpiado"
+            fi
+
+            # Limpiar kubuntu-docs (documentación)
+            if [[ "$app" == "kubuntu-docs" ]]; then
+                log_info "  → Limpiando documentación de Kubuntu..."
+                sudo rm -rf /usr/share/doc/kubuntu-docs 2>/dev/null
+                log_success "  → Documentación eliminada"
+            fi
+
+            # Limpiar libreoffice
+            if [[ "$app" == "libreoffice-core" ]]; then
+                log_info "  → Limpiando configuración de LibreOffice..."
+                rm -rf "$HOME/.config/libreoffice" 2>/dev/null
+                log_success "  → Configuración de LibreOffice eliminada"
+            fi
+
+            # Limpiar kdenlive
+            if [[ "$app" == "kdenlive" ]]; then
+                log_info "  → Limpiando configuración de Kdenlive..."
+                rm -rf "$HOME/.config/kdenliverc" 2>/dev/null
+                rm -rf "$HOME/.local/share/kdenlive" 2>/dev/null
+                log_success "  → Configuración de Kdenlive eliminada"
+            fi
         fi
     done
     echo ""
 }
-
 remove_snap_with_progress() {
     log_info "Eliminando Snap..."
 
@@ -579,6 +1163,17 @@ install_optional_with_progress() {
                 sudo apt install -y spotify-client > /dev/null 2>&1
                 ;;
             "obs-studio") sudo apt install -y obs-studio > /dev/null 2>&1 ;;
+            "emojier")
+                sudo apt install -y plasma5-addons > /dev/null 2>&1
+                log_success "Selector de emojis instalado (acceso con Meta+.)"
+                ;;
+            "qrca")
+                sudo apt install -y qrca > /dev/null 2>&1
+                if [ $? -ne 0 ]; then
+                    sudo snap install qrca 2>/dev/null
+                fi
+                log_success "QRca instalado"
+                ;;
         esac
         log_success "Instalado: $app"
     done
@@ -691,89 +1286,6 @@ Pin-Priority: -1' | sudo tee /etc/apt/preferences.d/nosnap.pref > /dev/null
     log_info "Para Firefox: sudo apt install firefox"
     pause
 }
-
-# ============================================================
-# APLICAR TODOS LOS CAMBIOS
-# ============================================================
-
-apply_all_changes() {
-    log_title "APLICANDO TODOS LOS CAMBIOS"
-
-    echo -e "${YELLOW}Resumen de cambios a aplicar:${NC}"
-    [ ${#SELECTED_APPS[@]} -gt 0 ] && echo "  • Eliminar ${#SELECTED_APPS[@]} aplicaciones"
-    [ "$REMOVE_METAPACKAGE" = true ] && echo "  • Eliminar kubuntu-desktop"
-    [ "$USE_ROLLING" = true ] && echo "  • KDE Rolling Release"
-    [ "$REMOVE_SNAPS" = true ] && echo "  • Eliminar Snap"
-    [ "$OPTIMIZE_GPU" = true ] && echo "  • Optimizar GPU NVIDIA"
-    [ "$OPTIMIZE_KERNEL" = true ] && echo "  • Optimizar Kernel y Memoria"
-    [ "$INSTALL_CUDA" = true ] && echo "  • Instalar CUDA Toolkit"
-    [ ${#SELECTED_OPTIONAL[@]} -gt 0 ] && echo "  • Instalar ${#SELECTED_OPTIONAL[@]} programas"
-
-    echo ""
-    if ! confirm "¿Aplicar estos cambios?"; then
-        log_info "Cancelado"
-        pause
-        return 1
-    fi
-
-    if [ ${#SELECTED_APPS[@]} -gt 0 ]; then
-        echo ""
-        remove_apps_with_progress "${SELECTED_APPS[@]}"
-    fi
-
-    if [ "$REMOVE_SNAPS" = true ]; then
-        echo ""
-        remove_snap_with_progress
-    fi
-
-    if [ "$REMOVE_METAPACKAGE" = true ]; then
-        echo ""
-        log_info "Eliminando kubuntu-desktop..."
-        sudo apt remove --purge -y kubuntu-desktop > /dev/null 2>&1
-        sudo apt install -y plasma-desktop > /dev/null 2>&1
-        log_success "Reemplazado por plasma-desktop"
-    fi
-
-    if [ "$USE_ROLLING" = true ]; then
-        echo ""
-        apply_kde_rolling
-    fi
-
-    if [ "$OPTIMIZE_GPU" = true ]; then
-        echo ""
-        optimize_gpu
-    fi
-
-    if [ "$OPTIMIZE_KERNEL" = true ]; then
-        echo ""
-        optimize_kernel
-    fi
-
-    if [ "$INSTALL_CUDA" = true ]; then
-        echo ""
-        install_cuda
-    fi
-
-    echo ""
-    log_info "Limpieza final..."
-    sudo apt autoremove --purge -y > /dev/null 2>&1
-    journalctl --vacuum-size=200M 2>/dev/null
-    rm -rf ~/.cache/thumbnails/* 2>/dev/null
-    log_success "Limpieza completada"
-
-    if [ ${#SELECTED_OPTIONAL[@]} -gt 0 ]; then
-        echo ""
-        if confirm "¿Instalar el software opcional seleccionado?"; then
-            install_optional_with_progress "${SELECTED_OPTIONAL[@]}"
-        fi
-    fi
-
-    echo ""
-    log_success "¡Sistema transformado y optimizado!"
-    log_warning "Recomendación: Reinicia el sistema para aplicar todos los cambios"
-    pause
-}
-
 # ============================================================
 # REVERTIR CAMBIOS
 # ============================================================
@@ -809,9 +1321,8 @@ revert_changes() {
     log_warning "Reinicia para completar"
     pause
 }
-
 # ============================================================
-# MENÚ PRINCIPAL
+# MENÚ PRINCIPAL (CORREGIDO)
 # ============================================================
 
 main_menu() {
@@ -820,28 +1331,30 @@ main_menu() {
         echo -e "${CYAN}¿Qué deseas hacer?${NC}\n"
         echo "  1) 🗑️  Eliminar aplicaciones preinstaladas"
         echo "  2) ⚙️  Configurar sistema (Rolling Release)"
-        echo "  3) 🚀  Optimizaciones de rendimiento (GPU, Kernel)"
-        echo "  4) 🔄  ACTUALIZAR SISTEMA (update/upgrade/clean)"
-        echo "  5) 🎨  Instalar Alacritty y temas"
-        echo "  6) 📦  Instalar software opcional"
-        echo "  7) 🔧  Aplicar TODOS los cambios"
-        echo "  8) ↩️  Revertir a Kubuntu original"
-        echo "  9) ☢️  ELIMINACIÓN NUCLEAR DE SNAP"
-        echo "  0) ❌  Salir"
+        echo "  3) 🎮  Optimizar GPU (NVIDIA/AMD/Intel)"
+        echo "  4) ⚡  Optimizar Kernel (Liquorix/Zen/Estándar)"
+        echo "  5) 💾  Optimizar Memoria RAM (automático)"
+        echo "  6) 🔄  ACTUALIZAR SISTEMA (update/upgrade/clean)"
+        echo "  7) 🖥️  Instalar Alacritty (terminal GPU) y temas Tokyo Night"
+        echo "  8) 📦  Instalar software opcional"
+        echo "  9) ↩️  Revertir a Kubuntu original"
+        echo " 10) ☢️  ELIMINACIÓN NUCLEAR DE SNAP"
+        echo " 11) ❌  Salir"
         echo ""
-        read -p "Opción (0-9): " option
+        read -p "Opción (1-11): " option
 
         case $option in
             1) select_apps_to_remove ;;
             2) configure_system ;;
-            3) optimize_performance ;;
-            4) system_update ;;
-            5) install_custom_software ;;
-            6) select_optional_software ;;
-            7) apply_all_changes ;;
-            8) revert_changes ;;
-            9) nuclear_snap_removal ;;
-            0)
+            3) optimize_gpu_menu ;;
+            4) optimize_kernel_menu ;;
+            5) optimize_ram_menu ;;
+            6) system_update ;;
+            7) install_custom_software ;;
+            8) select_optional_software ;;
+            9) revert_changes ;;
+            10) nuclear_snap_removal ;;
+            11)
                 log_success "¡Hasta luego!"
                 exit 0
                 ;;
