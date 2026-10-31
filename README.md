@@ -150,6 +150,10 @@ o desde la terminal:
 Perfiles rendimiento / equilibrado / ahorro, TLP para portátiles, activar o desactivar el indexador
 de archivos Baloo, y GameMode + MangoHud para juegos.
 
+MangoHud queda configurado: muestra los FPS en el juego y los graba en ~/mangohud-logs (SysMonitorPro los lee).
+Opcionalmente (y siempre en el perfil `gaming`) se activa en todos los juegos Vulkan/Proton sin tocar Steam.
+Shift derecho + F12 oculta el panel · Shift izquierdo + F2 pausa/reanuda la grabación.
+
 ---
 
 ⏱️ Velocidad
