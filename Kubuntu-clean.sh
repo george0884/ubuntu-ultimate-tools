@@ -86,6 +86,81 @@ confirm() {
     [[ "$response" =~ ^([sSyY]|[sS][iI]|[sS]í|[sS]Í)$ ]]
 }
 
+# Menú de selección múltiple: flechas (o j/k) para moverse, ESPACIO para marcar,
+# 'a' todos, 'n' ninguno, Enter para aceptar, 'q' o Esc para cancelar.
+# La fila activa y las marcadas usan un FONDO SÓLIDO que llena toda la línea:
+# con terminales transparentes (Alacritty opacity, Konsole con blur) solo
+# colorear el texto hacía que la selección casi no se viera.
+# Uso: checklist "Título" "$COLOR_ANSI_256" "nombre|descripción" ...
+# Deja los índices elegidos (desde 0) en CHECKLIST_RESULT.
+CHECKLIST_RESULT=()
+checklist() {
+    local title="$1" color="$2"
+    shift 2
+    local items=("$@") n=$# cur=0 top=0 i key rest rows name desc mark
+    local -a marked=()
+    CHECKLIST_RESULT=()
+    for ((i = 0; i < n; i++)); do marked[i]=0; done
+    [ "$n" -eq 0 ] && return 1
+
+    # Colores de 256: fondo de la fila activa, fondo de las marcadas, texto
+    local bg_cur="\033[48;5;${color}m\033[38;5;231m\033[1m"
+    local bg_mark="\033[48;5;236m\033[38;5;120m"
+    local fg="\033[38;5;${color}m"
+
+    printf '\033[?25l'
+    command clear
+    while true; do
+        rows=$(( $(tput lines 2>/dev/null || echo 24) - 7 ))
+        [ "$rows" -lt 3 ] && rows=3
+        [ "$cur" -lt "$top" ] && top=$cur
+        [ "$cur" -ge $((top + rows)) ] && top=$((cur - rows + 1))
+
+        local out="\033[H${fg}\033[1m  ${title}\033[0m\033[K\n"
+        out+="\033[2m  ↑↓ mover · ESPACIO marcar · a todos · n ninguno · Enter aceptar · q cancelar\033[0m\033[K\n\033[K\n"
+        for ((i = top; i < n && i < top + rows; i++)); do
+            name="${items[i]%%|*}"
+            desc="${items[i]#*|}"
+            if [ "${marked[i]}" -eq 1 ]; then mark="[✓]"; else mark="[ ]"; fi
+            if [ "$i" -eq "$cur" ]; then
+                out+="${bg_cur} ${mark} $(printf '%-28s %s' "$name" "$desc")\033[K\033[0m\n"
+            elif [ "${marked[i]}" -eq 1 ]; then
+                out+="${bg_mark} ${mark} $(printf '%-28s %s' "$name" "$desc")\033[K\033[0m\n"
+            else
+                out+="  ${mark} $(printf '%-28s %s' "$name" "$desc")\033[K\n"
+            fi
+        done
+        local total=0
+        for ((i = 0; i < n; i++)); do total=$((total + marked[i])); done
+        out+="\033[K\n${fg}  Marcados: ${total}/${n}\033[0m"
+        [ "$n" -gt "$rows" ] && out+="\033[2m   (fila $((cur + 1)) de ${n})\033[0m"
+        out+="\033[K\033[J"
+        printf '%b' "$out"
+
+        IFS= read -rsn1 key
+        if [ "$key" = $'\033' ]; then
+            IFS= read -rsn2 -t 0.05 rest
+            key+="$rest"
+        fi
+        case "$key" in
+            $'\033[A'|k) [ "$cur" -gt 0 ] && cur=$((cur - 1)) ;;
+            $'\033[B'|j) [ "$cur" -lt $((n - 1)) ] && cur=$((cur + 1)) ;;
+            $'\033[5') cur=$((cur - rows)); [ "$cur" -lt 0 ] && cur=0; IFS= read -rsn1 -t 0.05 _ ;;
+            $'\033[6') cur=$((cur + rows)); [ "$cur" -ge "$n" ] && cur=$((n - 1)); IFS= read -rsn1 -t 0.05 _ ;;
+            " ") marked[cur]=$((1 - marked[cur])); [ "$cur" -lt $((n - 1)) ] && cur=$((cur + 1)) ;;
+            a|A) for ((i = 0; i < n; i++)); do marked[i]=1; done ;;
+            n|N) for ((i = 0; i < n; i++)); do marked[i]=0; done ;;
+            "") break ;;
+            q|Q|$'\033') printf '\033[?25h\n'; return 1 ;;
+        esac
+    done
+    printf '\033[?25h\n'
+    for ((i = 0; i < n; i++)); do
+        [ "${marked[i]}" -eq 1 ] && CHECKLIST_RESULT+=("$i")
+    done
+    return 0
+}
+
 # ============================================================
 # FUNCIONES DE EJECUCIÓN SEGURA
 # ============================================================
@@ -188,8 +263,6 @@ select_apps_to_remove() {
     echo "╚══════════════════════════════════════════════════════════════════╝"
     echo -e "${NC}"
 
-    echo -e "\n${CYAN}📋 Lista de aplicaciones que puedes eliminar:${NC}\n"
-
     local apps=(
         "1|akregator|📰 Lector RSS y feeds"
         "2|cantata|🎵 Cliente de música MPD"
@@ -247,29 +320,15 @@ select_apps_to_remove() {
         "54|qml-module-qtquick-controls2|🎛️ Controles QtQuick"
     )
 
+    local app i items=()
     for app in "${apps[@]}"; do
-        num=$(echo "$app" | cut -d'|' -f1)
-        name=$(echo "$app" | cut -d'|' -f2)
-        desc=$(echo "$app" | cut -d'|' -f3)
-        printf "  ${CYAN}[%2s]${NC} %-22s - %s\n" "$num" "$name" "$desc"
+        items+=("$(echo "$app" | cut -d'|' -f2-3)")
     done
 
-    echo -e "\n${CYAN}📝 Instrucciones: Escribe los números separados por espacio${NC}"
-    echo -e "${CYAN}Ejemplo: 3 5 11 23 46 47 48${NC}\n"
-
-    read -r -p "🔢 Números a eliminar: " input
-
     SELECTED_APPS=()
-    if [ -n "$input" ]; then
-        for num in $input; do
-            for app in "${apps[@]}"; do
-                app_num=$(echo "$app" | cut -d'|' -f1)
-                app_name=$(echo "$app" | cut -d'|' -f2)
-                if [ "$app_num" = "$num" ]; then
-                    SELECTED_APPS+=("$app_name")
-                    echo -e "  ${GREEN}✓ Marcado para eliminar: $app_name${NC}"
-                fi
-            done
+    if checklist "🗑️  ELIMINAR APLICACIONES — marca las que QUIERES QUITAR" 31 "${items[@]}"; then
+        for i in "${CHECKLIST_RESULT[@]}"; do
+            SELECTED_APPS+=("${items[i]%%|*}")
         done
     fi
 
@@ -1222,6 +1281,7 @@ style = "Regular"
 
 [colors]
 primary = { background = "#1a1b26", foreground = "#c0caf5" }
+selection = { background = "#33467c", foreground = "#c0caf5" }
 normal = { black = "#15161e", red = "#f7768e", green = "#9ece6a", yellow = "#e0af68", blue = "#7aa2f7", magenta = "#bb9af7", cyan = "#7dcfff", white = "#a9b1d6" }
 EOF
         echo -e "${GREEN}✓ Alacritty instalado (usando GPU para renderizado)${NC}"
@@ -1283,28 +1343,16 @@ select_optional_software() {
         "21|qrca|📱 Generador de códigos QR"
     )
 
+    local app i items=()
     for app in "${software[@]}"; do
-        num=$(echo "$app" | cut -d'|' -f1)
-        name=$(echo "$app" | cut -d'|' -f2)
-        desc=$(echo "$app" | cut -d'|' -f3)
-        printf "  ${BLUE}[%2s]${NC} %-20s - %s\n" "$num" "$name" "$desc"
+        items+=("$(echo "$app" | cut -d'|' -f2-3)")
     done
 
-    echo -e "\n${BLUE}📝 Escribe los números separados por espacio${NC}"
-    echo -e "${BLUE}Ejemplo: 2 4 13 20 21${NC}\n"
-    read -r -p "🔢 Números a instalar: " input
-
     SELECTED_OPTIONAL=()
-    if [ -n "$input" ]; then
-        for num in $input; do
-            for app in "${software[@]}"; do
-                app_num=$(echo "$app" | cut -d'|' -f1)
-                app_name=$(echo "$app" | cut -d'|' -f2)
-                if [ "$app_num" = "$num" ]; then
-                    SELECTED_OPTIONAL+=("$app_name")
-                    echo -e "  ${GREEN}✓ Marcado: $app_name${NC}"
-                fi
-            done
+    if checklist "📦 SOFTWARE OPCIONAL — marca los programas que QUIERES INSTALAR" 33 "${items[@]}"; then
+        for i in "${CHECKLIST_RESULT[@]}"; do
+            SELECTED_OPTIONAL+=("${items[i]%%|*}")
+            echo -e "  ${GREEN}✓ Marcado: ${items[i]%%|*}${NC}"
         done
     fi
 
@@ -2041,7 +2089,7 @@ taskmanager_applets() {
 }
 
 remove_desktop_shortcuts() {
-    local dir items=() item i=0 input selected=() kind
+    local dir items=() item i selected=() kind
     dir=$(desktop_dir)
     if [ -z "$dir" ]; then
         log_warning "No se encontró la carpeta del escritorio"
@@ -2055,27 +2103,20 @@ remove_desktop_shortcuts() {
         return 0
     fi
 
-    echo -e "${CYAN}📁 Contenido de $dir:${NC}\n"
+    local entries=()
     for item in "${items[@]}"; do
-        i=$((i + 1))
         kind="archivo"
         [[ "$item" == *.desktop ]] && kind="acceso directo"
         [ -L "$dir/$item" ] && kind="enlace"
         [ -d "$dir/$item" ] && kind="carpeta"
-        printf "  ${CYAN}[%2s]${NC} %-40s ${YELLOW}(%s)${NC}\n" "$i" "$item" "$kind"
+        entries+=("$item|($kind)")
     done
-    echo -e "\n${CYAN}📝 Números separados por espacio, 't' = todos los accesos directos (.desktop y enlaces)${NC}"
-    read -r -p "🔢 Quitar: " input
-
-    if [ "$input" = "t" ] || [ "$input" = "T" ]; then
-        for item in "${items[@]}"; do
-            [[ "$item" == *.desktop ]] || [ -L "$dir/$item" ] && selected+=("$item")
-        done
-    else
-        for i in $input; do
-            [[ "$i" =~ ^[0-9]+$ ]] && [ "$i" -ge 1 ] && [ "$i" -le ${#items[@]} ] && selected+=("${items[$((i - 1))]}")
+    if checklist "📁 QUITAR DEL ESCRITORIO — $dir" 31 "${entries[@]}"; then
+        for i in "${CHECKLIST_RESULT[@]}"; do
+            selected+=("${items[i]}")
         done
     fi
+
     if [ ${#selected[@]} -eq 0 ]; then
         echo -e "${YELLOW}ℹ No seleccionaste nada${NC}"
         return 0
@@ -2490,7 +2531,101 @@ install_gaming_tools() {
     apt_install gamemode mangohud || return 1
     # Valor que usan SteamOS y Fedora: evita cierres en juegos modernos (Proton)
     set_sysctl vm.max_map_count 1048576
+    # En modo automático solo se crea la configuración si el usuario no tiene una
+    if $AUTO_MODE; then
+        [ -f "$MANGOHUD_CONF" ] || write_mangohud_conf full
+    else
+        mangohud_menu
+    fi
     log_success "GameMode y MangoHud instalados (en Steam: gamemoderun mangohud %command%)"
+}
+
+MANGOHUD_CONF="$HOME/.config/MangoHud/MangoHud.conf"
+MANGOHUD_ENV="$HOME/.config/environment.d/90-mangohud.conf"
+
+# Escribe la configuración de MangoHud. Modos: full (FPS + CPU/GPU/RAM) o fps (solo FPS).
+write_mangohud_conf() {
+    local mode="$1"
+    mkdir -p "$(dirname "$MANGOHUD_CONF")" "$HOME/mangohud-logs"
+    [ -f "$MANGOHUD_CONF" ] && cp "$MANGOHUD_CONF" "$MANGOHUD_CONF.bak"
+    {
+        echo "# Generado por Kubuntu Lite Ultimate ($(date '+%Y-%m-%d'))"
+        echo "# Shift derecho + F12: mostrar/ocultar · Shift izquierdo + F2: grabar registro de FPS"
+        echo "toggle_hud=Shift_R+F12"
+        echo "toggle_logging=Shift_L+F2"
+        echo "output_folder=$HOME/mangohud-logs"
+        echo "position=top-left"
+        echo "font_size=20"
+        echo "round_corners=8"
+        # Fondo semitransparente pero legible sobre cualquier juego
+        echo "background_alpha=0.45"
+        echo "fps"
+        echo "fps_color_change"
+        echo "fps_value=30,60"
+        echo "fps_color=FF5555,FDFD09,39F900"
+        echo "frametime"
+        echo "frame_timing"
+        if [ "$mode" = "full" ]; then
+            echo "gpu_name"
+            echo "gpu_stats"
+            echo "gpu_temp"
+            echo "vram"
+            echo "cpu_stats"
+            echo "cpu_temp"
+            echo "ram"
+            echo "gamemode"
+        else
+            echo "hud_compact"
+        fi
+    } > "$MANGOHUD_CONF"
+    log_success "MangoHud configurado ($mode): $MANGOHUD_CONF"
+    [ -f "$MANGOHUD_CONF.bak" ] && log_info "Configuración anterior guardada en $MANGOHUD_CONF.bak"
+}
+
+mangohud_global_enabled() { [ -f "$MANGOHUD_ENV" ]; }
+
+mangohud_menu() {
+    while true; do
+        clear
+        echo -e "${YELLOW}${BOLD}"
+        echo "╔══════════════════════════════════════════════════════════════════╗"
+        echo "║                    🎮 FPS EN PANTALLA (MANGOHUD)                 ║"
+        echo "╚══════════════════════════════════════════════════════════════════╝"
+        echo -e "${NC}"
+        if mangohud_global_enabled; then
+            echo -e "${YELLOW}🌐 Global para Vulkan: ${BOLD}activado${NC}"
+        else
+            echo -e "${YELLOW}🌐 Global para Vulkan: ${BOLD}desactivado${NC} (se activa por juego)"
+        fi
+        echo ""
+        echo -e "  ${YELLOW}1)${NC} Completo: FPS, frametime, CPU, GPU, temperaturas, RAM y VRAM"
+        echo -e "  ${YELLOW}2)${NC} Mínimo: solo FPS y frametime"
+        echo -e "  ${YELLOW}3)${NC} Activar en todos los juegos Vulkan/Proton (sin tocar Steam)"
+        echo -e "  ${YELLOW}4)${NC} Desactivar el modo global"
+        echo -e "  ${YELLOW}5)${NC} Volver"
+        echo ""
+        echo -e "${CYAN}ℹ Por juego en Steam: Propiedades → Opciones de lanzamiento → mangohud %command%${NC}"
+        echo -e "${CYAN}ℹ Juegos OpenGL / nativos: mangohud nombre-del-juego${NC}"
+        echo ""
+        read -r -p "📌 Opción (1-5): " mh_option
+        case $mh_option in
+            1) write_mangohud_conf full ;;
+            2) write_mangohud_conf fps ;;
+            3)
+                mkdir -p "$(dirname "$MANGOHUD_ENV")"
+                echo "MANGOHUD=1" > "$MANGOHUD_ENV"
+                log_success "MangoHud global activado (se aplica al volver a iniciar sesión)"
+                log_info "Se oculta con Shift derecho + F12 si molesta en alguna aplicación"
+                ;;
+            4)
+                rm -f "$MANGOHUD_ENV"
+                log_success "MangoHud global desactivado (se aplica al volver a iniciar sesión)"
+                ;;
+            5) return 0 ;;
+            *) log_error "Opción no válida" ;;
+        esac
+        pause
+    done
 }
 
 power_menu() {
@@ -2510,7 +2645,7 @@ power_menu() {
         echo -e "  ${YELLOW}3)${NC} Ahorro de energía"
         echo -e "  ${YELLOW}4)${NC} TLP: ahorro avanzado de batería para portátiles"
         echo -e "  ${YELLOW}5)${NC} Activar/desactivar indexador de archivos Baloo"
-        echo -e "  ${YELLOW}6)${NC} Herramientas de juego (GameMode y MangoHud)"
+        echo -e "  ${YELLOW}6)${NC} Herramientas de juego (GameMode y MangoHud con FPS en pantalla)"
         echo -e "  ${YELLOW}7)${NC} Volver"
         echo ""
         read -r -p "📌 Opción (1-7): " power_option

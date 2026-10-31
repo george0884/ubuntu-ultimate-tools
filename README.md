@@ -150,6 +150,17 @@ o desde la terminal:
 Perfiles rendimiento / equilibrado / ahorro, TLP para portátiles, activar o desactivar el indexador
 de archivos Baloo, y GameMode + MangoHud para juegos.
 
+🎮 FPS en pantalla (MangoHud): al instalarlo se elige el estilo — completo (FPS, frametime,
+CPU/GPU, temperaturas, RAM, VRAM) o mínimo (solo FPS) — y opcionalmente activarlo en todos los
+juegos Vulkan/Proton sin tocar Steam.
+
+| Atajo | Acción |
+|-------|--------|
+| Shift derecho + F12 | Mostrar / ocultar el HUD |
+| Shift izquierdo + F2 | Grabar registro de FPS en ~/mangohud-logs |
+
+Por juego en Steam: Propiedades → Opciones de lanzamiento → `mangohud %command%`
+
 ---
 
 ⏱️ Velocidad
@@ -257,7 +268,10 @@ graph LR
 
 📸 Capturas
 
-Menú de selección de software opcional
+Menú de selección (eliminar apps, software opcional, accesos del escritorio)
+
+↑↓ mover · ESPACIO marcar · a todos · n ninguno · Enter aceptar · q cancelar.
+La fila activa y las marcadas llevan fondo sólido, así se leen bien en terminales transparentes.
 
 ```
 ┌─────────────────────┤ Instalar Software Adicional ├─────────────────────┐
