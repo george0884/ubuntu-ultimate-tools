@@ -152,6 +152,41 @@ de archivos Baloo, y GameMode + MangoHud para juegos.
 
 ---
 
+🔧 Reparar GRUB (opción 12)
+
+| Situación | Opción |
+|-----------|--------|
+| El sistema arranca | **2** Reparación normal · **3** Instalar GRUB en un disco concreto |
+| No arranca: aparece `grub>` | **5** Guía para arrancar a mano (`set root`, `linux`, `initrd`, `boot`) |
+| No arranca: aparece `grub rescue>` | **6** Guía para recuperar el menú (`set prefix`, `insmod normal`) |
+| No arranca: desde un **Live USB** | **4** Reparación **automática** con chroot · **7** Guía con los comandos |
+
+La reparación automática desde Live USB:
+
+- Detecta UEFI o BIOS, lista las particiones de Linux y desbloquea discos cifrados (LUKS/LVM).
+- Monta la raíz (también btrfs con subvolumen `@`), `/boot` y la partición EFI según el `fstab` del sistema.
+- Prepara el chroot (`/dev`, `/dev/pts`, `/proc`, `/sys`, `/run`, `efivars`), ejecuta `grub-install` y `update-grub`.
+- Si `grub-install` falla, ofrece reinstalar los paquetes de GRUB y reintentar.
+- Al final desmonta todo, también si algo falla a mitad de camino.
+
+Para usarla: arranca el USB de Kubuntu → "Probar Kubuntu" → Konsole:
+
+```bash
+wget https://raw.githubusercontent.com/george0884/Extremely-custom-Kubuntu/main/Kubuntu-clean.sh
+bash Kubuntu-clean.sh      # opción 12 → 4
+```
+
+---
+
+☑️ Selección con barra espaciadora
+
+En "Eliminar aplicaciones" (opción 1) y "Software opcional" (opción 8) las listas usan casillas:
+**Espacio** marca o desmarca, **flechas** para moverse, **Enter** para aceptar. La lista de eliminación
+solo muestra las apps instaladas, y la de software marca las que ya tienes. Si `whiptail` no está
+disponible, se vuelve a la selección escribiendo números.
+
+---
+
 ⏱️ Velocidad
 
 - Las apps se instalan y eliminan **en una sola operación** de apt, no una por una.

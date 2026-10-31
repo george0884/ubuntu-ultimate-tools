@@ -176,6 +176,50 @@ set_sysctl() {
     fi
 }
 
+# Lista con casillas: barra espaciadora para marcar, Enter para aceptar.
+# Entradas "paquete|descripción"; deja lo elegido en CHOSEN. Devuelve 1 si se cancela.
+# Si no hay whiptail (o no es una terminal interactiva) se elige escribiendo números.
+checklist_select() {
+    local title="$1" text="$2"
+    shift 2
+    local entries=("$@") args=() entry name desc i=0 input num
+    CHOSEN=()
+
+    if command -v whiptail &> /dev/null && [ -t 0 ] && [ -t 1 ]; then
+        for entry in "${entries[@]}"; do
+            name=${entry%%|*}
+            desc=${entry#*|}
+            # Sin el emoji inicial: whiptail calcula mal su ancho y descuadra la lista
+            [[ "$desc" == *" "* ]] && [[ "${desc%% *}" != *[[:alnum:]]* ]] && desc=${desc#* }
+            args+=("$name" "$desc" OFF)
+        done
+        local h w lh out
+        h=$(( $(tput lines 2>/dev/null || echo 24) - 2 ))
+        w=$(( $(tput cols 2>/dev/null || echo 80) - 4 ))
+        [ "$h" -lt 15 ] && h=15
+        [ "$w" -gt 100 ] && w=100
+        lh=$((h - 9))
+        out=$(whiptail --title "$title" --ok-button "Aceptar" --cancel-button "Cancelar" \
+            --checklist "$text\n\nEspacio: marcar/desmarcar · Flechas: moverse · Enter: aceptar" \
+            "$h" "$w" "$lh" "${args[@]}" 3>&1 1>&2 2>&3) || return 1
+        read -r -a CHOSEN <<< "$(tr -d '"' <<< "$out")"
+        return 0
+    fi
+
+    echo -e "${CYAN}$text${NC}\n"
+    for entry in "${entries[@]}"; do
+        i=$((i + 1))
+        printf "  ${CYAN}[%2s]${NC} %-22s - %s\n" "$i" "${entry%%|*}" "${entry#*|}"
+    done
+    echo ""
+    read -r -p "🔢 Números separados por espacio: " input
+    for num in $input; do
+        if [[ "$num" =~ ^[0-9]+$ ]] && [ "$num" -ge 1 ] && [ "$num" -le ${#entries[@]} ]; then
+            CHOSEN+=("${entries[$((num - 1))]%%|*}")
+        fi
+    done
+}
+
 # ============================================================
 # OPCIÓN 1: ELIMINAR APLICACIONES (COLOR: CIAN)
 # ============================================================
@@ -188,90 +232,80 @@ select_apps_to_remove() {
     echo "╚══════════════════════════════════════════════════════════════════╝"
     echo -e "${NC}"
 
-    echo -e "\n${CYAN}📋 Lista de aplicaciones que puedes eliminar:${NC}\n"
-
     local apps=(
-        "1|akregator|📰 Lector RSS y feeds"
-        "2|cantata|🎵 Cliente de música MPD"
-        "3|dragonplayer|🎬 Reproductor de video"
-        "4|juk|🎵 Reproductor de audio"
-        "5|k3b|💿 Grabador de CDs y DVDs"
-        "6|kaddressbook|📇 Agenda de contactos"
-        "7|kalarm|⏰ Alarmas y recordatorios"
-        "8|kate|📝 Editor de texto avanzado"
-        "9|kmag|🔍 Lupa de pantalla"
-        "10|kmail|📧 Cliente de correo electrónico"
-        "11|kmahjongg|🀄 Juego de Mahjongg"
-        "12|kmines|💣 Juego de buscaminas"
-        "13|knotes|📋 Notas adhesivas"
-        "14|konsole|💻 Terminal"
-        "15|kontact|📅 Suite PIM completa"
-        "16|konversation|💬 Cliente IRC"
-        "17|korganizer|📆 Calendario"
-        "18|kpat|🃏 Juego de cartas solitario"
-        "19|krdc|🖥️ Cliente de escritorio remoto"
-        "20|kruler|📏 Regla en pantalla"
-        "21|ksudoku|🔢 Juego de Sudoku"
-        "22|ktorrent|📥 Cliente Torrent"
-        "23|libreoffice-core|📄 Suite ofimática"
-        "24|skanlite|🖨️ Escáner"
-        "25|kmouth|🗣️ Sintetizador de voz"
-        "26|kcharselect|🔣 Mapa de caracteres"
-        "27|kdf|💾 Visor de uso de disco"
-        "28|kfind|🔎 Buscador de archivos"
-        "29|kgpg|🔐 Gestión de claves GPG"
-        "30|kamoso|📷 Cámara web"
-        "31|kdeconnect|📱 Sincronización con móvil"
-        "32|kdenlive|🎬 Editor de video"
-        "33|khelpcenter|❓ Centro de ayuda"
-        "34|kio-extras|🔌 Protocolos extra KIO"
-        "35|kmix|🔊 Control de volumen"
-        "36|kolourpaint|🎨 Pintura simple"
-        "37|kompare|📊 Comparador de archivos"
-        "38|kremotecontrol|🎮 Control remoto"
-        "39|kscreen|🖥️ Configuración de pantallas"
-        "40|ksystemlog|📋 Visor de logs del sistema"
-        "41|kteatime|🍵 Temporizador para té"
-        "42|ktimer|⏱️ Temporizador"
-        "43|kwalletmanager|👛 Gestión de contraseñas"
-        "44|okular|📖 Visor de PDF/DjVu"
-        "45|spectacle|📸 Capturas de pantalla"
-        "46|gwenview|🖼️ Visor de imágenes"
-        "47|mpv|🎬 Reproductor multimedia ligero"
-        "48|remmina|🖥️ Cliente de escritorio remoto"
-        "49|plasma-discover|🛒 Tienda de aplicaciones"
-        "50|plasma-welcome|👋 Guía de bienvenida"
-        "51|kubuntu-docs|📚 Documentación de Kubuntu"
-        "52|kubuntu-web-shortcuts|🌐 Accesos web de Kubuntu"
-        "53|qml-module-org-kde-kirigami2|🎨 Componentes Kirigami"
-        "54|qml-module-qtquick-controls2|🎛️ Controles QtQuick"
+        "akregator|📰 Lector RSS y feeds"
+        "cantata|🎵 Cliente de música MPD"
+        "dragonplayer|🎬 Reproductor de video"
+        "juk|🎵 Reproductor de audio"
+        "k3b|💿 Grabador de CDs y DVDs"
+        "kaddressbook|📇 Agenda de contactos"
+        "kalarm|⏰ Alarmas y recordatorios"
+        "kate|📝 Editor de texto avanzado"
+        "kmag|🔍 Lupa de pantalla"
+        "kmail|📧 Cliente de correo electrónico"
+        "kmahjongg|🀄 Juego de Mahjongg"
+        "kmines|💣 Juego de buscaminas"
+        "knotes|📋 Notas adhesivas"
+        "konsole|💻 Terminal"
+        "kontact|📅 Suite PIM completa"
+        "konversation|💬 Cliente IRC"
+        "korganizer|📆 Calendario"
+        "kpat|🃏 Juego de cartas solitario"
+        "krdc|🖥️ Cliente de escritorio remoto"
+        "kruler|📏 Regla en pantalla"
+        "ksudoku|🔢 Juego de Sudoku"
+        "ktorrent|📥 Cliente Torrent"
+        "libreoffice-core|📄 Suite ofimática"
+        "skanlite|🖨️ Escáner"
+        "kmouth|🗣️ Sintetizador de voz"
+        "kcharselect|🔣 Mapa de caracteres"
+        "kdf|💾 Visor de uso de disco"
+        "kfind|🔎 Buscador de archivos"
+        "kgpg|🔐 Gestión de claves GPG"
+        "kamoso|📷 Cámara web"
+        "kdeconnect|📱 Sincronización con móvil"
+        "kdenlive|🎬 Editor de video"
+        "khelpcenter|❓ Centro de ayuda"
+        "kio-extras|🔌 Protocolos extra KIO"
+        "kmix|🔊 Control de volumen"
+        "kolourpaint|🎨 Pintura simple"
+        "kompare|📊 Comparador de archivos"
+        "kremotecontrol|🎮 Control remoto"
+        "kscreen|🖥️ Configuración de pantallas"
+        "ksystemlog|📋 Visor de logs del sistema"
+        "kteatime|🍵 Temporizador para té"
+        "ktimer|⏱️ Temporizador"
+        "kwalletmanager|👛 Gestión de contraseñas"
+        "okular|📖 Visor de PDF/DjVu"
+        "spectacle|📸 Capturas de pantalla"
+        "gwenview|🖼️ Visor de imágenes"
+        "mpv|🎬 Reproductor multimedia ligero"
+        "remmina|🖥️ Cliente de escritorio remoto"
+        "plasma-discover|🛒 Tienda de aplicaciones"
+        "plasma-welcome|👋 Guía de bienvenida"
+        "kubuntu-docs|📚 Documentación de Kubuntu"
+        "kubuntu-web-shortcuts|🌐 Accesos web de Kubuntu"
+        "qml-module-org-kde-kirigami2|🎨 Componentes Kirigami"
+        "qml-module-qtquick-controls2|🎛️ Controles QtQuick"
     )
 
+    # Solo se ofrecen las que están instaladas
+    local installed=() entries=() app
+    mapfile -t installed < <(installed_pkgs "${apps[@]%%|*}")
     for app in "${apps[@]}"; do
-        num=$(echo "$app" | cut -d'|' -f1)
-        name=$(echo "$app" | cut -d'|' -f2)
-        desc=$(echo "$app" | cut -d'|' -f3)
-        printf "  ${CYAN}[%2s]${NC} %-22s - %s\n" "$num" "$name" "$desc"
+        printf '%s\n' "${installed[@]}" | grep -qx -- "${app%%|*}" && entries+=("$app")
     done
-
-    echo -e "\n${CYAN}📝 Instrucciones: Escribe los números separados por espacio${NC}"
-    echo -e "${CYAN}Ejemplo: 3 5 11 23 46 47 48${NC}\n"
-
-    read -r -p "🔢 Números a eliminar: " input
+    if [ ${#entries[@]} -eq 0 ]; then
+        echo -e "${YELLOW}ℹ Ninguna de estas aplicaciones está instalada${NC}"
+        pause
+        return 0
+    fi
 
     SELECTED_APPS=()
-    if [ -n "$input" ]; then
-        for num in $input; do
-            for app in "${apps[@]}"; do
-                app_num=$(echo "$app" | cut -d'|' -f1)
-                app_name=$(echo "$app" | cut -d'|' -f2)
-                if [ "$app_num" = "$num" ]; then
-                    SELECTED_APPS+=("$app_name")
-                    echo -e "  ${GREEN}✓ Marcado para eliminar: $app_name${NC}"
-                fi
-            done
-        done
+    if checklist_select "Eliminar aplicaciones" "Marca las aplicaciones que quieres ELIMINAR (${#entries[@]} instaladas)" "${entries[@]}"; then
+        SELECTED_APPS=("${CHOSEN[@]}")
     fi
+    clear
 
     if [ ${#SELECTED_APPS[@]} -gt 0 ]; then
         echo ""
@@ -1260,52 +1294,57 @@ select_optional_software() {
     echo -e "${NC}"
 
     local software=(
-        "1|filezilla|📁 Cliente FTP/SFTP"
-        "2|code|📝 Visual Studio Code"
-        "3|virtualbox|🖥️ VirtualBox"
-        "4|google-chrome-stable|🌐 Google Chrome"
-        "5|telegram-desktop|📱 Telegram"
-        "6|python3|🐍 Python 3"
-        "7|python3-pip|📦 PIP"
-        "8|python3-venv|📦 Entornos virtuales"
-        "9|git|📚 Git"
-        "10|curl|🌐 CURL"
-        "11|wget|⬇️ Wget"
-        "12|htop|📊 HTOP"
-        "13|fastfetch|🖥️ Fastfetch"
-        "14|timeshift|⏰ Timeshift"
-        "15|gparted|💾 GParted"
-        "16|vim|⌨️ Vim"
-        "17|discord|🎮 Discord"
-        "18|spotify|🎵 Spotify"
-        "19|obs-studio|🎥 OBS Studio"
-        "20|emojier|😊 Selector de emojis"
-        "21|qrca|📱 Generador de códigos QR"
+        "filezilla|📁 Cliente FTP/SFTP"
+        "code|📝 Visual Studio Code"
+        "virtualbox|🖥️ VirtualBox"
+        "google-chrome-stable|🌐 Google Chrome"
+        "telegram-desktop|📱 Telegram"
+        "python3|🐍 Python 3"
+        "python3-pip|📦 PIP"
+        "python3-venv|📦 Entornos virtuales"
+        "git|📚 Git"
+        "curl|🌐 CURL"
+        "wget|⬇️ Wget"
+        "htop|📊 HTOP"
+        "fastfetch|🖥️ Fastfetch"
+        "timeshift|⏰ Timeshift"
+        "gparted|💾 GParted"
+        "vim|⌨️ Vim"
+        "discord|🎮 Discord"
+        "spotify|🎵 Spotify"
+        "obs-studio|🎥 OBS Studio"
+        "emojier|😊 Selector de emojis"
+        "qrca|📱 Generador de códigos QR"
     )
 
+    # Se marca lo que ya está instalado para no reinstalarlo por error
+    local installed=() entries=() app pkg
+    mapfile -t installed < <(installed_pkgs "${software[@]%%|*}" spotify-client kdeplasma-addons)
     for app in "${software[@]}"; do
-        num=$(echo "$app" | cut -d'|' -f1)
-        name=$(echo "$app" | cut -d'|' -f2)
-        desc=$(echo "$app" | cut -d'|' -f3)
-        printf "  ${BLUE}[%2s]${NC} %-20s - %s\n" "$num" "$name" "$desc"
+        pkg=${app%%|*}
+        case $pkg in
+            spotify) pkg=spotify-client ;;
+            emojier) pkg=kdeplasma-addons ;;
+        esac
+        if printf '%s\n' "${installed[@]}" | grep -qx -- "$pkg"; then
+            entries+=("${app} (ya instalado)")
+        else
+            entries+=("$app")
+        fi
     done
 
-    echo -e "\n${BLUE}📝 Escribe los números separados por espacio${NC}"
-    echo -e "${BLUE}Ejemplo: 2 4 13 20 21${NC}\n"
-    read -r -p "🔢 Números a instalar: " input
-
     SELECTED_OPTIONAL=()
-    if [ -n "$input" ]; then
-        for num in $input; do
-            for app in "${software[@]}"; do
-                app_num=$(echo "$app" | cut -d'|' -f1)
-                app_name=$(echo "$app" | cut -d'|' -f2)
-                if [ "$app_num" = "$num" ]; then
-                    SELECTED_OPTIONAL+=("$app_name")
-                    echo -e "  ${GREEN}✓ Marcado: $app_name${NC}"
-                fi
-            done
-        done
+    if checklist_select "Software opcional" "Marca los programas que quieres INSTALAR" "${entries[@]}"; then
+        SELECTED_OPTIONAL=("${CHOSEN[@]}")
+    fi
+    clear
+
+    if [ ${#SELECTED_OPTIONAL[@]} -gt 0 ]; then
+        echo -e "${BLUE}📋 Se instalarán:${NC}"
+        printf "  ${BLUE}•${NC} %s\n" "${SELECTED_OPTIONAL[@]}"
+        echo ""
+    else
+        echo -e "${YELLOW}ℹ No seleccionaste ningún programa${NC}"
     fi
 
     if [ ${#SELECTED_OPTIONAL[@]} -gt 0 ]; then
@@ -1778,21 +1817,29 @@ grub_repair_menu() {
         echo "╚══════════════════════════════════════════════════════════════════╝"
         echo -e "${NC}"
 
-        echo -e "\n${PURPLE}📋 Opciones disponibles:${NC}\n"
+        is_live_session && echo -e "${GREEN}💿 Sesión Live USB detectada: usa la opción 4${NC}"
+        echo -e "\n${PURPLE}📋 Con el sistema arrancado:${NC}\n"
         echo -e "  ${PURPLE}1)${NC} 📊 DIAGNÓSTICO - Ver discos y particiones"
         echo -e "  ${PURPLE}2)${NC} 🔧 REPARACIÓN NORMAL - Reinstalar GRUB"
         echo -e "  ${PURPLE}3)${NC} 💿 INSTALAR GRUB EN DISCO - Disco específico"
-        echo -e "  ${PURPLE}4)${NC} 🛡️ GUÍA PARA RESCUE - Solucionar 'grub rescue>'"
-        echo -e "  ${PURPLE}5)${NC} ⬅️ Volver al menú principal"
+        echo -e "\n${PURPLE}📋 Cuando el sistema NO arranca:${NC}\n"
+        echo -e "  ${PURPLE}4)${NC} 🚑 REPARAR DESDE LIVE USB - Automático (chroot)"
+        echo -e "  ${PURPLE}5)${NC} 📖 GUÍA 'grub>' - Arrancar a mano desde el prompt de GRUB"
+        echo -e "  ${PURPLE}6)${NC} 📖 GUÍA 'grub rescue>' - Recuperar el menú de GRUB"
+        echo -e "  ${PURPLE}7)${NC} 📖 GUÍA LIVE USB - Reparación manual con comandos"
+        echo -e "  ${PURPLE}8)${NC} ⬅️ Volver al menú principal"
         echo ""
-        read -r -p "📌 Opcion (1-5): " grub_option
+        read -r -p "📌 Opcion (1-8): " grub_option
 
         case $grub_option in
             1) grub_diagnostic ;;
             2) grub_normal_repair ;;
             3) grub_reinstall_to_disk ;;
-            4) grub_rescue_guide ;;
-            5) return 0 ;;
+            4) grub_live_repair ;;
+            5) grub_prompt_guide ;;
+            6) grub_rescue_guide ;;
+            7) grub_live_guide ;;
+            8) return 0 ;;
             *) echo -e "${RED}❌ Opcion invalida${NC}"; sleep 1 ;;
         esac
     done
@@ -1906,46 +1953,336 @@ grub_reinstall_to_disk() {
     read -r
 }
 
-grub_rescue_guide() {
+grub_guide_header() {
     clear
     echo -e "${PURPLE}${BOLD}"
     echo "╔══════════════════════════════════════════════════════════════════╗"
-    echo "║                    🛡️ GUÍA PARA GRUB RESCUE                      ║"
+    printf "║                    %-46s║\n" "$1"
     echo "╚══════════════════════════════════════════════════════════════════╝"
     echo -e "${NC}"
+}
 
+grub_prompt_guide() {
+    grub_guide_header "📖 ARRANQUE MANUAL DESDE 'grub>'"
     cat << 'EOF'
+Si al encender aparece "grub>" (GRUB cargó, pero no encuentra su menú),
+puedes arrancar Kubuntu a mano. La tecla TAB autocompleta nombres y rutas.
 
-══════════════════════════════════════════════════════════════════
-🛡️ GUIA PARA SOLUCIONAR "grub rescue>"
+PASO 1: ENCONTRAR LA PARTICIÓN DE KUBUNTU
+    ls
+  Verás algo como: (hd0) (hd0,gpt1) (hd0,gpt2) ...  (o msdos1, msdos2 en discos MBR)
+  Prueba cada una hasta ver las carpetas del sistema (boot/, etc/, home/...):
+    ls (hd0,gpt2)/
 
-Si al iniciar ves el mensaje "grub rescue>", sigue estos pasos:
+PASO 2: CARGAR MÓDULOS Y ARRANCAR
+  (cambia hd0,gpt2 y /dev/sda2 por los tuyos)
+    set root=(hd0,gpt2)
+    insmod part_gpt          (en discos MBR: insmod part_msdos)
+    insmod ext2              (sirve también para ext4)
+    insmod linux
+    linux /boot/vmlinuz root=/dev/sda2 ro
+    initrd /boot/initrd.img
+    boot
+
+  • /boot/vmlinuz e /boot/initrd.img apuntan siempre al kernel más nuevo,
+    así no hace falta escribir la versión (vmlinuz-6.8.0-xx...).
+  • root= usa el nombre de Linux, no el de GRUB:
+      (hd0,gpt2) suele ser /dev/sda2 en discos SATA y /dev/nvme0n1p2 en NVMe.
+    Si te equivocas, verás "(initramfs)": reinicia y prueba con otro nombre.
+  • Si /boot está en su propia partición, en PASO 2 usa esa partición y
+    quita "/boot" de las rutas: linux /vmlinuz ... e initrd /initrd.img
+
+PASO 3: YA DENTRO DEL SISTEMA (reparar de forma permanente)
+  Ejecuta este script → opción 12 → 2 (REPARACIÓN NORMAL), o a mano:
+    sudo grub-install /dev/sda        (en UEFI basta: sudo grub-install)
+    sudo update-grub
+  (update-grub es lo mismo que "grub-mkconfig -o /boot/grub/grub.cfg")
+EOF
+    echo -e "\n${YELLOW}📌 Presiona Enter para volver...${NC}"
+    read -r
+}
+
+grub_rescue_guide() {
+    grub_guide_header "🛡️ GUÍA PARA 'grub rescue>'"
+    cat << 'EOF'
+"grub rescue>" significa que GRUB no encuentra ni sus módulos: aquí no existen
+los comandos "linux" ni "initrd", solo ls, set e insmod.
 
 PASO 1: IDENTIFICAR LAS PARTICIONES
-  En el prompt "grub rescue>" escribe:
     ls
+  Verás algo como: (hd0) (hd0,gpt1) (hd0,gpt2) (hd0,gpt3)
 
-  Veras algo como: (hd0) (hd0,gpt1) (hd0,gpt2) (hd0,gpt3)
-
-PASO 2: ENCONTRAR LA PARTICION DE LINUX
-  Prueba cada particion con:
+PASO 2: ENCONTRAR LA PARTICIÓN DE LINUX
+  Prueba cada partición con:
     ls (hd0,gpt2)/boot/grub
-
-  La que muestre archivos (como normal.mod) es la correcta.
+  La que muestre archivos (como grub.cfg o la carpeta x86_64-efi / i386-pc)
+  es la correcta.
 
 PASO 3: CARGAR GRUB NORMALMENTE
-  Una vez identificada la particion (ej: hd0,gpt2), escribe:
+  Con la partición encontrada (ej: hd0,gpt2):
     set prefix=(hd0,gpt2)/boot/grub
+    set root=(hd0,gpt2)
     insmod normal
     normal
 
-PASO 4: UNA VEZ EN EL SISTEMA
-  1. Bootea normalmente
-  2. Ejecuta este script nuevamente
-  3. Usa la opcion de reparación normal de GRUB
+  Aparecerá el menú de GRUB (o el prompt "grub>": sigue la guía 5).
 
-══════════════════════════════════════════════════════════════════
+PASO 4: UNA VEZ EN EL SISTEMA
+  Ejecuta este script → opción 12 → 2 (REPARACIÓN NORMAL).
+
+SI "insmod normal" FALLA
+  Los archivos de GRUB están dañados: arranca desde un USB de Kubuntu
+  y usa la opción 4 (reparación automática desde Live USB).
 EOF
+    echo -e "\n${YELLOW}📌 Presiona Enter para volver...${NC}"
+    read -r
+}
+
+grub_live_guide() {
+    grub_guide_header "📖 REPARACIÓN MANUAL DESDE LIVE USB"
+    cat << 'EOF'
+Arranca desde un USB de Kubuntu ("Probar Kubuntu") y abre Konsole.
+La opción 4 de este menú hace todo esto automáticamente.
+
+1. IDENTIFICAR LA PARTICIÓN DEL SISTEMA (y la EFI, si el equipo es UEFI)
+    sudo fdisk -l            (o: lsblk -f)
+  • Sistema: la partición ext4/btrfs grande (ej: /dev/sda2)
+  • EFI: la partición FAT32 de ~100-1000 MB "EFI System" (ej: /dev/sda1)
+  • ¿UEFI o BIOS? Si existe /sys/firmware/efi, es UEFI.
+
+2. MONTAR EL SISTEMA
+    sudo mount /dev/sda2 /mnt
+    sudo mount /dev/sda1 /mnt/boot/efi            (solo UEFI)
+  • btrfs: sudo mount -o subvol=@ /dev/sda2 /mnt
+  • Cifrado (LUKS): sudo cryptsetup open /dev/sda3 cripta
+                    sudo vgchange -ay   y monta el volumen que aparezca
+  • /boot separado: sudo mount /dev/sdaX /mnt/boot (antes que /boot/efi)
+
+3. PREPARAR EL ENTORNO PARA EL CHROOT
+    for d in dev dev/pts proc sys run; do sudo mount --bind /$d /mnt/$d; done
+    sudo mount -t efivarfs efivarfs /mnt/sys/firmware/efi/efivars   (solo UEFI)
+
+4. ENTRAR AL SISTEMA DAÑADO
+    sudo chroot /mnt
+
+5. REINSTALAR GRUB (dentro del chroot)
+  UEFI:
+    grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=ubuntu
+  BIOS (al DISCO, no a la partición: /dev/sda, no /dev/sda2):
+    grub-install --target=i386-pc /dev/sda
+  Después, en ambos casos:
+    update-grub
+  (update-grub = grub-mkconfig -o /boot/grub/grub.cfg; no hace falta ejecutar los dos)
+
+  Si grub-install falla por archivos que faltan, reinstala GRUB (necesita internet):
+    apt install --reinstall grub-efi-amd64-signed shim-signed     (UEFI)
+    apt install --reinstall grub-pc                               (BIOS)
+
+6. SALIR, DESMONTAR Y REINICIAR
+    exit
+    sudo umount -R /mnt      (desmonta todo lo de /mnt de una vez)
+    reboot
+EOF
+    echo -e "\n${YELLOW}📌 Presiona Enter para volver...${NC}"
+    read -r
+}
+
+# ------------------------------------------------------------
+# Reparación automática desde Live USB
+# ------------------------------------------------------------
+
+RESCUE_MNT="/mnt/kubuntu-rescate"
+
+is_live_session() {
+    grep -qw 'boot=casper' /proc/cmdline 2>/dev/null || [ -d /cdrom/casper ] \
+        || [ "$(findmnt -no FSTYPE / 2>/dev/null)" = "overlay" ]
+}
+
+# Particiones con sistema de archivos de Linux: "dispositivo|tamaño|tipo|etiqueta"
+linux_partitions() {
+    local dev fs
+    while read -r dev; do
+        fs=$(lsblk -dno FSTYPE "$dev" 2>/dev/null)
+        case $fs in ext4|ext3|btrfs|xfs) ;; *) continue ;; esac
+        echo "$dev|$(lsblk -dno SIZE "$dev" | tr -d ' ')|$fs|$(lsblk -dno LABEL "$dev")"
+    done < <(lsblk -lnpo NAME,TYPE | awk '$2 == "part" || $2 == "lvm" || $2 == "crypt" {print $1}')
+}
+
+unlock_encrypted_partitions() {
+    local dev
+    for dev in $(lsblk -lnpo NAME,FSTYPE | awk '$2 == "crypto_LUKS" {print $1}'); do
+        lsblk -lnpo TYPE "$dev" | grep -q crypt && continue
+        if confirm "${PURPLE}🔐 $dev está cifrada. ¿Desbloquearla?${NC}"; then
+            sudo cryptsetup open "$dev" "rescate_$(basename "$dev")" \
+                || log_error "No se pudo desbloquear $dev"
+        fi
+    done
+    command -v vgchange &> /dev/null && sudo vgchange -ay >> "$LOG_FILE" 2>&1
+}
+
+rescue_umount() {
+    findmnt "$RESCUE_MNT" > /dev/null 2>&1 || return 0
+    sudo umount -R "$RESCUE_MNT" 2>> "$LOG_FILE" || sudo umount -lR "$RESCUE_MNT" 2>> "$LOG_FILE"
+}
+
+rescue_grub_install() {
+    local uefi="$1" disk="$2"
+    if $uefi; then
+        run_visible "Falló grub-install" sudo chroot "$RESCUE_MNT" \
+            grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=ubuntu --recheck
+    else
+        run_visible "Falló grub-install" sudo chroot "$RESCUE_MNT" grub-install --target=i386-pc --recheck "$disk"
+    fi
+}
+
+grub_live_repair() {
+    grub_guide_header "🚑 REPARAR GRUB DESDE LIVE USB"
+
+    if ! is_live_session; then
+        log_warning "Esto no parece una sesión Live USB"
+        echo -e "${YELLOW}  Esta opción es para cuando Kubuntu no arranca: inicia desde un USB de Kubuntu,${NC}"
+        echo -e "${YELLOW}  elige 'Probar Kubuntu', abre Konsole y ejecuta este script.${NC}"
+        echo -e "${YELLOW}  Si el sistema arranca, usa la opción 2 (REPARACIÓN NORMAL).${NC}\n"
+        if ! confirm "${PURPLE}¿Continuar de todos modos?${NC}"; then
+            return 0
+        fi
+    fi
+
+    local uefi=false
+    [ -d /sys/firmware/efi ] && uefi=true
+    if $uefi; then
+        echo -e "${PURPLE}🖥️ Modo de arranque: UEFI${NC}"
+    else
+        echo -e "${PURPLE}🖥️ Modo de arranque: BIOS (Legacy)${NC}"
+    fi
+    echo -e "${YELLOW}ℹ El USB debe haber arrancado en el mismo modo que el sistema instalado${NC}\n"
+
+    unlock_encrypted_partitions
+
+    local parts=() part i=0 choice root_dev root_fs disk
+    mapfile -t parts < <(linux_partitions)
+    if [ ${#parts[@]} -eq 0 ]; then
+        log_error "No se encontraron particiones de Linux"
+        echo -e "\n${YELLOW}📌 Presiona Enter para volver...${NC}"
+        read -r
+        return 1
+    fi
+    echo -e "${PURPLE}💾 Particiones de Linux encontradas:${NC}\n"
+    for part in "${parts[@]}"; do
+        i=$((i + 1))
+        IFS='|' read -r root_dev disk root_fs choice <<< "$part"
+        printf "  ${PURPLE}[%s]${NC} %-22s %8s  %-6s %s\n" "$i" "$root_dev" "$disk" "$root_fs" "$choice"
+    done
+    echo ""
+    read -r -p "📌 ¿Cuál es la partición del sistema (la raíz /)? " choice
+    if ! [[ "$choice" =~ ^[0-9]+$ ]] || [ "$choice" -lt 1 ] || [ "$choice" -gt ${#parts[@]} ]; then
+        log_error "Opción inválida"
+        sleep 1
+        return 1
+    fi
+    IFS='|' read -r root_dev _ root_fs _ <<< "${parts[$((choice - 1))]}"
+    # Disco físico que contiene la partición (atravesando LVM/LUKS)
+    disk="/dev/$(lsblk -rnso NAME,TYPE "$root_dev" | awk '$2 == "disk" {print $1; exit}')"
+
+    echo -e "\n${PURPLE}[1/5] Montando $root_dev...${NC}"
+    rescue_umount
+    sudo mkdir -p "$RESCUE_MNT"
+    if [ "$root_fs" = "btrfs" ]; then
+        # Kubuntu instala la raíz en el subvolumen @
+        sudo mount -o subvol=@ "$root_dev" "$RESCUE_MNT" 2>> "$LOG_FILE" \
+            || run "No se pudo montar $root_dev" sudo mount "$root_dev" "$RESCUE_MNT" || return 1
+    else
+        run "No se pudo montar $root_dev" sudo mount "$root_dev" "$RESCUE_MNT" || return 1
+    fi
+    if [ ! -f "$RESCUE_MNT/etc/fstab" ] || [ ! -d "$RESCUE_MNT/boot" ]; then
+        log_error "$root_dev no contiene un sistema instalado (no tiene /etc/fstab ni /boot)"
+        rescue_umount
+        echo -e "\n${YELLOW}📌 Presiona Enter para volver...${NC}"
+        read -r
+        return 1
+    fi
+
+    echo -e "${PURPLE}[2/5] Montando /boot y la partición EFI...${NC}"
+    local mp spec esp
+    # Particiones separadas según el fstab del sistema instalado (primero /boot)
+    for mp in /boot /boot/efi; do
+        spec=$(awk -v m="$mp" '$1 !~ /^#/ && $2 == m {print $1; exit}' "$RESCUE_MNT/etc/fstab")
+        if [ -n "$spec" ]; then
+            sudo mkdir -p "$RESCUE_MNT$mp"
+            run "No se pudo montar $mp ($spec)" sudo mount "$spec" "$RESCUE_MNT$mp" || { rescue_umount; return 1; }
+            log_success "$mp montado ($spec)"
+        fi
+    done
+    if $uefi && ! findmnt "$RESCUE_MNT/boot/efi" > /dev/null 2>&1; then
+        esp=$(lsblk -lnpo NAME,PARTTYPE | awk 'tolower($2) == "c12a7328-f81f-11d2-ba4b-00a0c93ec93b" || $2 == "0xef" {print $1; exit}')
+        if [ -z "$esp" ]; then
+            log_error "No se encontró la partición EFI (FAT32, tipo 'EFI System')"
+            rescue_umount
+            return 1
+        fi
+        sudo mkdir -p "$RESCUE_MNT/boot/efi"
+        run "No se pudo montar la partición EFI $esp" sudo mount "$esp" "$RESCUE_MNT/boot/efi" || { rescue_umount; return 1; }
+        log_success "Partición EFI montada ($esp)"
+    fi
+
+    echo -e "${PURPLE}[3/5] Preparando el entorno chroot...${NC}"
+    local d
+    for d in dev dev/pts proc sys run; do
+        run "No se pudo montar /$d" sudo mount --bind "/$d" "$RESCUE_MNT/$d" || { rescue_umount; return 1; }
+    done
+    $uefi && sudo mount -t efivarfs efivarfs "$RESCUE_MNT/sys/firmware/efi/efivars" 2>> "$LOG_FILE"
+
+    if ! $uefi; then
+        echo -e "\n${PURPLE}💿 Discos:${NC}"
+        lsblk -dpno NAME,SIZE,MODEL | grep -v loop | sed 's/^/  /'
+        read -r -p "📌 Disco donde instalar GRUB [Enter = $disk]: " d
+        [ -n "$d" ] && disk="$d"
+        if [ ! -b "$disk" ]; then
+            log_error "El disco $disk no existe"
+            rescue_umount
+            return 1
+        fi
+    fi
+
+    echo -e "\n${PURPLE}📋 Resumen:${NC}"
+    echo -e "  • Sistema: $root_dev ($root_fs)"
+    $uefi && echo -e "  • Modo: UEFI (partición EFI en /boot/efi)" || echo -e "  • Modo: BIOS, GRUB en $disk"
+    if ! confirm "${PURPLE}¿Reinstalar GRUB ahora?${NC}"; then
+        rescue_umount
+        return 0
+    fi
+
+    echo -e "${PURPLE}[4/5] Reinstalando GRUB...${NC}"
+    local ok=0
+    if ! rescue_grub_install "$uefi" "$disk"; then
+        ok=1
+        local grub_pkgs="grub-pc"
+        $uefi && grub_pkgs="grub-efi-amd64 grub-efi-amd64-signed shim-signed"
+        if confirm "${PURPLE}¿Reinstalar los paquetes de GRUB del sistema y reintentar? (necesita internet)${NC}"; then
+            # shellcheck disable=SC2086  # lista de paquetes
+            run_visible "No se pudieron reinstalar los paquetes de GRUB" sudo chroot "$RESCUE_MNT" \
+                env DEBIAN_FRONTEND=noninteractive apt-get install --reinstall -y $grub_pkgs \
+                && rescue_grub_install "$uefi" "$disk" && ok=0
+        fi
+    fi
+
+    if [ $ok -eq 0 ]; then
+        run_visible "Falló update-grub" sudo chroot "$RESCUE_MNT" update-grub
+        ok=$?
+    fi
+
+    echo -e "${PURPLE}[5/5] Desmontando...${NC}"
+    rescue_umount
+
+    echo ""
+    if [ $ok -eq 0 ]; then
+        log_success "GRUB reparado. Quita el USB y reinicia"
+        if confirm "${PURPLE}¿Reiniciar ahora?${NC}"; then
+            sudo reboot
+        fi
+    else
+        log_error "La reparación no terminó. Revisa: $LOG_FILE"
+    fi
     echo -e "\n${YELLOW}📌 Presiona Enter para volver...${NC}"
     read -r
 }
