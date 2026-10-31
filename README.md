@@ -97,8 +97,68 @@ chmod +x Kubuntu-clean.sh
 12) 🔧 REPARAR GRUB (BIOS/EFI/Rescue)
 13) 🔌 Apagar / Reiniciar sistema
 14) 🧹 Quitar accesos directos (escritorio y panel)
-15) ❌ Salir
+15) 🌐 Red, DNS y drivers
+16) 🔋 Energía y rendimiento
+17) 🚀 PERFILES AUTOMÁTICOS (gaming, productividad...)
+18) ❌ Salir
 ```
+
+---
+
+🚀 Perfiles automáticos
+
+Aplican varias optimizaciones de una vez, sin preguntas intermedias. Se eligen desde el menú (opción 17)
+o desde la terminal:
+
+```bash
+./Kubuntu-clean.sh --perfiles                  # lista los perfiles
+./Kubuntu-clean.sh --perfil gaming             # muestra el plan y pide una confirmación
+./Kubuntu-clean.sh --perfil productividad --si # sin confirmación
+```
+
+| Perfil | Qué hace |
+|--------|----------|
+| `productividad` | Actualiza, quita juegos, instala git/htop/timeshift..., RAM + ZRAM, TRIM, DNS más rápido, TCP BBR |
+| `gaming` | Drivers recomendados, kernel Liquorix, GameMode + MangoHud, energía al máximo, sin Baloo, Wi-Fi sin ahorro, BBR, DNS |
+| `ahorro` | TLP en portátiles (perfil de ahorro en PC), sin Baloo, ZRAM, RAM, TRIM |
+| `desarrollo` | git, build-essential, Python, VSCode, más vigilancia de archivos para IDEs, RAM, ZRAM, BBR, DNS |
+| `minimalista` | Estilo KDE Neon: sin `kubuntu-desktop` ni apps extra, sin Snap, Firefox .deb de Mozilla, Plasma de backports |
+
+- Si un paso falla, el perfil sigue con los demás y al final muestra un resumen ✓/✗.
+- Las preguntas internas (por ejemplo, instalar CUDA) se responden "no" automáticamente.
+- El perfil `gaming` omite Liquorix si Secure Boot está activado.
+- El perfil `minimalista` copia antes los perfiles de Firefox/Thunderbird del snap para no perder marcadores.
+
+---
+
+🌐 Red, DNS y drivers (opción 15)
+
+- **DNS**: Cloudflare, Cloudflare con bloqueo de malware, Google, Quad9 o AdGuard (bloquea anuncios), con DNS
+  cifrado cuando el servidor lo permite. También puede **medir cuál responde más rápido** desde tu conexión.
+  Si con el DNS elegido no se resuelven nombres, vuelve solo al automático.
+- **TCP BBR**: mejora velocidad y latencia, sobre todo en Wi-Fi y conexiones inestables.
+- **Wi-Fi sin ahorro de energía**: evita picos de latencia y microcortes.
+- **Drivers**: instala los recomendados por Ubuntu para tu hardware (NVIDIA, Wi-Fi Broadcom, etc.).
+- **Firmware**: actualiza BIOS/UEFI, SSD y otros dispositivos con `fwupd`.
+
+> Un DNS rápido acelera el inicio de cada página, pero no aumenta los Mbps contratados.
+
+---
+
+🔋 Energía y rendimiento (opción 16)
+
+Perfiles rendimiento / equilibrado / ahorro, TLP para portátiles, activar o desactivar el indexador
+de archivos Baloo, y GameMode + MangoHud para juegos.
+
+---
+
+⏱️ Velocidad
+
+- Las apps se instalan y eliminan **en una sola operación** de apt, no una por una.
+- Los `.deb` externos (VSCode, Chrome, Discord) se descargan en paralelo.
+- `apt update` se ejecuta una vez por sesión (o se omite si el sistema lo hizo hace menos de 30 minutos).
+- Cambiar de kernel no regenera GRUB: se usa `GRUB_DEFAULT=saved` + `grub-set-default`.
+- La opción 2 permite desactivar la indexación de manuales (`man-db`), lo más lento de cada instalación.
 
 ---
 
