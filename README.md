@@ -1,7 +1,3 @@
-
----
-
-```markdown
 <div align="center">
   
 # 🚀 Kubuntu Transformer
@@ -50,7 +46,6 @@
 - **Kubuntu** 22.04 LTS o superior
 - Conexión a internet
 - Usuario con privilegios `sudo`
-- Terminal con soporte para menús `whiptail` (se instala automáticamente)
 
 ---
 
@@ -59,26 +54,26 @@
 ### 1. Descargar el script
 
 ```bash
-git clone https://github.com/tu-usuario/kubuntu-transformer.git
-cd kubuntu-transformer
+git clone https://github.com/george0884/Extremely-custom-Kubuntu.git
+cd Extremely-custom-Kubuntu
 ```
 
 O directamente:
 
 ```bash
-wget https://raw.githubusercontent.com/tu-usuario/kubuntu-transformer/main/transform.sh
+wget https://raw.githubusercontent.com/george0884/Extremely-custom-Kubuntu/main/Kubuntu-clean.sh
 ```
 
 2. Dar permisos de ejecución
 
 ```bash
-chmod +x transform.sh
+chmod +x Kubuntu-clean.sh
 ```
 
 3. Ejecutar
 
 ```bash
-./transform.sh
+./Kubuntu-clean.sh
 ```
 
 💡 No es necesario ejecutarlo como root. El script solicitará sudo cuando sea necesario.
@@ -88,18 +83,56 @@ chmod +x transform.sh
 🎮 Menú Principal
 
 ```
-╔════════════════════════════════════════════════════════════╗
-║     TRANSFORMADOR DE KUBUNTU A KDE NEON (o personal)       ║
-╚════════════════════════════════════════════════════════════╝
-
-1) 🗑️  Seleccionar apps para eliminar (incluye SNAP)
-2) ⚙️  Configurar estilo del sistema (Neon/Kubuntu)
-3) 🎨  Instalar terminal y temas (Alacritty + Tokyo Night)
-4) 📦  Instalar software opcional
-5) 🚀  Aplicar todos los cambios seleccionados
-6) ↩️  Revertir cambios (volver a Kubuntu original)
-7) ❌  Salir
+ 1) 🗑️  Eliminar aplicaciones preinstaladas
+ 2) ⚙️  Configurar sistema (Rolling Release)
+ 3) 🎮 Optimizar GPU (NVIDIA/AMD/Intel)
+ 4) ⚡ Optimizar Kernel (Liquorix/XanMod/Estándar)
+ 5) 💾 Optimizar Memoria RAM (automático)
+ 6) 🔄 ACTUALIZAR SISTEMA (update/upgrade/clean)
+ 7) 🖥️  Instalar Alacritty (terminal GPU) y temas
+ 8) 📦 Instalar software opcional
+ 9) ↩️  Revertir a Kubuntu original
+10) ☢️  ELIMINACION NUCLEAR DE SNAP
+11) 🔄 REINSTALAR SNAP
+12) 🔧 REPARAR GRUB (BIOS/EFI/Rescue)
+13) 🔌 Apagar / Reiniciar sistema
+14) 🧹 Quitar accesos directos (escritorio y panel)
+15) ❌ Salir
 ```
+
+---
+
+⚡ Cambio de kernel
+
+| Opción | Kernel | Notas |
+|--------|--------|-------|
+| 1 | Liquorix (basado en Zen) | PPA `damentz/liquorix`, solo amd64 |
+| 2 | XanMod | Repositorio oficial de XanMod; elige x64v2/x64v3 según tu CPU |
+| 3 | Oficial de Ubuntu | Elige **LTS (GA)**, **HWE** o una **versión específica**; elimina Liquorix/XanMod |
+| 4 | Oficial + Livepatch | LTS o HWE + Ubuntu Pro (solo versiones LTS, requiere Snap) |
+
+Dentro de la opción 3:
+
+- **LTS / GA** (`linux-generic`): el kernel con el que salió la versión de Ubuntu. Máxima estabilidad.
+- **HWE** (`linux-generic-hwe-XX.04`): kernel más reciente para hardware nuevo (solo en versiones LTS).
+- **Versión específica**: lista las 15 versiones oficiales más recientes y GRUB arranca siempre la elegida.
+- Al final se puede dejar **solo esa versión**, borrando el resto de kernels oficiales.
+- El kernel en uso nunca se borra en caliente: se elimina al reiniciar y volver a abrir el script.
+
+- Liquorix y XanMod **no están firmados**: requieren **Secure Boot desactivado** (el script lo comprueba).
+- El kernel oficial se conserva siempre como respaldo. Si un kernel no arranca, elige el `generic`
+  en *Opciones avanzadas* de GRUB (Shift/Esc al encender) y usa la opción 3.
+- Los errores se muestran en pantalla y el detalle completo queda en `~/kubuntu-lite.log`.
+
+---
+
+↩️ Revertir (opción 9)
+
+- Quita el PPA backports y **baja Plasma a la versión oficial** (quitar el PPA no lo hace solo).
+- Desbloquea Snap y reinstala `kubuntu-desktop` **con todas sus aplicaciones**.
+- Reinstala todo lo que el script eliminó (incluidas dependencias); la lista está en
+  `~/.local/share/kubuntu-lite/paquetes-eliminados.txt`.
+- Restaura los íconos del escritorio y las aplicaciones fijadas del panel quitadas con la opción 14.
 
 ---
 
@@ -144,10 +177,10 @@ Snap: Sistema completo de Snap (Firefox, Store, etc.)
 
 ```mermaid
 graph LR
-    A[Ejecutar script] --> B[Opción 1: Seleccionar apps a eliminar]
-    B --> C[Opción 2: Configurar estilo Neon]
-    C --> D[Opción 4: Elegir software opcional]
-    D --> E[Opción 5: Aplicar cambios]
+    A[Ejecutar script] --> B[Opción 1: Eliminar apps]
+    B --> C[Opción 2: Configurar sistema]
+    C --> D[Opción 6: Actualizar sistema]
+    D --> E[Opción 8: Software opcional]
     E --> F[¡Sistema transformado!]
 ```
 
@@ -210,11 +243,11 @@ No está recomendado. El script está diseñado específicamente para Kubuntu de
 
 ¿Qué pasa si elimino Snap?
 
-Firefox y la tienda Snap se eliminarán. Puedes reinstalar Firefox desde APT: sudo apt install firefox
+Firefox y la tienda Snap se eliminarán. En Ubuntu `apt install firefox` solo instala el snap, así que usa el PPA de Mozilla: `sudo add-apt-repository ppa:mozillateam/ppa`
 
 ¿Cómo vuelvo atrás?
 
-Usa la Opción 6 del menú principal. Reinstalará kubuntu-desktop y restaurará Snap.
+Usa la Opción 9 del menú principal. Reinstalará kubuntu-desktop y restaurará Snap.
 
 ¿Necesito reinstalar después de ejecutar el script?
 
@@ -253,24 +286,3 @@ Oldtheone – @george0884
 ⭐ ¿Te fue útil este script? ¡Dale una estrella en GitHub!
 
 </div>
-```
-
----
-
-📝 Instrucciones para personalizar el README
-
-Antes de usar el README, cambia estos datos:
-
-Campo Búscalo en el README Cámbialo por
-tu-usuario https://github.com/tu-usuario/... Tu nombre de usuario de GitHub
-Tu Nombre **Tu Nombre** Tu nombre real o alias
-@tu-usuario @tu-usuario Tu usuario de GitHub
-
-📁 Estructura de archivos recomendada
-
-```
-kubuntu-transformer/
-├── transform.sh          # El script principal
-├── README.md             # Este archivo
-└── LICENSE               # Archivo MIT (opcional)
-```
