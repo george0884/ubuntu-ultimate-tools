@@ -53,16 +53,23 @@
 
 ### 1. Descargar el script
 
+El repositorio es **privado**: para descargarlo hay que iniciar sesión en GitHub
+(`wget` o un `git clone` sin sesión no funcionan).
+
+**Opción A: con Git** (inicia sesión una sola vez con GitHub CLI)
+
 ```bash
+sudo apt install gh
+gh auth login          # GitHub.com → HTTPS → Yes → Login with a web browser
 git clone https://github.com/george0884/Extremely-custom-Kubuntu.git
 cd Extremely-custom-Kubuntu
 ```
 
-O directamente:
+Para actualizar más adelante: `git pull`
 
-```bash
-wget https://raw.githubusercontent.com/george0884/Extremely-custom-Kubuntu/main/Kubuntu-clean.sh
-```
+**Opción B: desde la web**
+
+En la página del repositorio: **Code → Download ZIP**, y descomprímelo.
 
 2. Dar permisos de ejecución
 
@@ -169,12 +176,34 @@ La reparación automática desde Live USB:
 - Si `grub-install` falla, ofrece reinstalar los paquetes de GRUB y reintentar.
 - Al final desmonta todo, también si algo falla a mitad de camino.
 
-Para usarla: arranca el USB de Kubuntu → "Probar Kubuntu" → Konsole:
+#### Prepárate antes de necesitarlo
+
+Como el repositorio es privado, desde el Live USB no se puede descargar el script sin iniciar
+sesión. Lo más práctico es **guardarlo ahora en un pendrive**, mientras el sistema funciona:
+
+1. Copia `Kubuntu-clean.sh` a un pendrive (puede ser el mismo del Live USB si tiene una
+   partición de datos, o uno aparte).
+2. Ten a mano también un **USB de instalación de Kubuntu** (el Live USB).
+
+#### Cuando el sistema no arranca
+
+1. Arranca desde el USB de Kubuntu y elige **"Probar Kubuntu"**.
+   Debe arrancar en el mismo modo que el sistema instalado (UEFI o BIOS/Legacy).
+2. Conecta el pendrive con el script. Aparece en el gestor de archivos (Dolphin);
+   haz clic en él para montarlo.
+3. Abre **Konsole** y ejecuta (cambia `PENDRIVE` por el nombre de tu pendrive;
+   la tecla TAB lo autocompleta):
 
 ```bash
-wget https://raw.githubusercontent.com/george0884/Extremely-custom-Kubuntu/main/Kubuntu-clean.sh
+cd /media/kubuntu/PENDRIVE
 bash Kubuntu-clean.sh      # opción 12 → 4
 ```
+
+- Se usa `bash Kubuntu-clean.sh` y no `./Kubuntu-clean.sh` porque los pendrives FAT32/exFAT
+  no guardan el permiso de ejecución.
+- `ls /media/kubuntu/` muestra el nombre exacto del pendrive.
+- Si tienes internet en el Live USB y prefieres no usar pendrive: `sudo apt install gh`,
+  `gh auth login` y `git clone` (ver *Instalación*).
 
 ---
 

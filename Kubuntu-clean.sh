@@ -176,6 +176,28 @@ set_sysctl() {
     fi
 }
 
+# Colores de alto contraste para whiptail: los de fábrica (azul y gris claro) se leen
+# mal con muchos temas de Konsole. Se respeta NEWT_COLORS si el usuario ya lo definió.
+WHIPTAIL_COLORS='
+root=white,black
+border=cyan,black
+window=white,black
+shadow=black,black
+title=brightcyan,black
+textbox=white,black
+listbox=white,black
+actlistbox=black,cyan
+sellistbox=white,black
+actsellistbox=black,cyan
+checkbox=white,black
+actcheckbox=black,cyan
+button=white,blue
+actbutton=black,cyan
+compactbutton=white,black
+helpline=white,black
+roottext=white,black
+'
+
 # Lista con casillas: barra espaciadora para marcar, Enter para aceptar.
 # Entradas "paquete|descripción"; deja lo elegido en CHOSEN. Devuelve 1 si se cancela.
 # Si no hay whiptail (o no es una terminal interactiva) se elige escribiendo números.
@@ -193,13 +215,17 @@ checklist_select() {
             [[ "$desc" == *" "* ]] && [[ "${desc%% *}" != *[[:alnum:]]* ]] && desc=${desc#* }
             args+=("$name" "$desc" OFF)
         done
-        local h w lh out
-        h=$(( $(tput lines 2>/dev/null || echo 24) - 2 ))
+        local h w lh max_h out
+        # Alto justo para la lista (sin hueco vacío), limitado al tamaño de la terminal
+        max_h=$(( $(tput lines 2>/dev/null || echo 24) - 2 ))
+        [ "$max_h" -lt 15 ] && max_h=15
+        lh=${#entries[@]}
+        [ "$lh" -gt $((max_h - 10)) ] && lh=$((max_h - 10))
+        h=$((lh + 10))
         w=$(( $(tput cols 2>/dev/null || echo 80) - 4 ))
-        [ "$h" -lt 15 ] && h=15
-        [ "$w" -gt 100 ] && w=100
-        lh=$((h - 9))
-        out=$(whiptail --title "$title" --ok-button "Aceptar" --cancel-button "Cancelar" \
+        [ "$w" -gt 90 ] && w=90
+        out=$(NEWT_COLORS="${NEWT_COLORS:-$WHIPTAIL_COLORS}" \
+            whiptail --title "$title" --ok-button "Aceptar" --cancel-button "Cancelar" \
             --checklist "$text\n\nEspacio: marcar/desmarcar · Flechas: moverse · Enter: aceptar" \
             "$h" "$w" "$lh" "${args[@]}" 3>&1 1>&2 2>&3) || return 1
         read -r -a CHOSEN <<< "$(tr -d '"' <<< "$out")"
