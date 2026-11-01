@@ -4,7 +4,7 @@
 
 ### Transforma tu Kubuntu en un sistema minimalista estilo KDE Neon
 
-[![Licencia](https://img.shields.io/badge/Licencia-MIT-blue.svg)](LICENSE)
+[![Licencia](https://img.shields.io/badge/Licencia-GPL%20v3-blue.svg)](LICENSE)
 [![Bash](https://img.shields.io/badge/Shell-Bash-4EAA25?logo=gnu-bash&logoColor=white)](https://www.gnu.org/software/bash/)
 [![KDE Plasma](https://img.shields.io/badge/KDE%20Plasma-6.0+-1D99F3?logo=kde&logoColor=white)](https://kde.org/plasma-desktop/)
 [![Ubuntu](https://img.shields.io/badge/Ubuntu-22.04%2B-E95420?logo=ubuntu&logoColor=white)](https://ubuntu.com/)
@@ -391,7 +391,10 @@ Las contribuciones son bienvenidas. Puedes:
 
 📄 Licencia
 
-Este proyecto está bajo la licencia MIT. Ver archivo LICENSE para más detalles.
+Este proyecto está bajo la licencia **GNU GPL v3** (o posterior). Ver el archivo [LICENSE](LICENSE).
+
+En resumen: puedes usar, copiar, modificar y compartir el script libremente. Si distribuyes una
+versión modificada, debe publicarse con su código fuente y bajo la misma licencia GPL v3.
 
 ---
 

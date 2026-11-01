@@ -5,6 +5,9 @@
 # Descripción: Transforma Kubuntu en un sistema minimalista
 #              con optimizaciones de rendimiento extremo
 # Versión: 7.0 - MENÚS UNIFORMES Y ESTÉTICA CUIDADA
+# Autor: Old The One Deluxe (@george0884)
+# Licencia: GNU GPL v3 o posterior (ver archivo LICENSE)
+# SPDX-License-Identifier: GPL-3.0-or-later
 # ============================================================
 
 # ============================================================
@@ -1249,11 +1252,113 @@ system_update() {
 # OPCIÓN 7: INSTALAR ALACRITTY Y TEMAS (COLOR: CIAN)
 # ============================================================
 
+# ------------------------------------------------------------
+# Tema Tokyo Night (incluido en el script: no depende de descargas)
+# ------------------------------------------------------------
+
+# Un grupo de colores de KDE: $1 nombre, $2 fondo, $3 fondo alterno, $4 texto
+tokyo_color_group() {
+    cat << EOF
+[Colors:$1]
+BackgroundAlternate=$3
+BackgroundNormal=$2
+DecorationFocus=122,162,247
+DecorationHover=125,207,255
+ForegroundActive=255,158,100
+ForegroundInactive=86,95,137
+ForegroundLink=122,162,247
+ForegroundNegative=247,118,142
+ForegroundNeutral=224,175,104
+ForegroundNormal=$4
+ForegroundPositive=158,206,106
+ForegroundVisited=187,154,247
+
+EOF
+}
+
+write_tokyo_night_colors() {
+    local file="$HOME/.local/share/color-schemes/TokyoNight.colors"
+    mkdir -p "$(dirname "$file")"
+    {
+        tokyo_color_group View "26,27,38" "31,35,53" "192,202,245"
+        tokyo_color_group Window "22,22,30" "26,27,38" "192,202,245"
+        tokyo_color_group Button "41,46,66" "31,35,53" "192,202,245"
+        tokyo_color_group Selection "61,89,161" "41,46,66" "192,202,245"
+        tokyo_color_group Tooltip "22,22,30" "26,27,38" "192,202,245"
+        tokyo_color_group Complementary "22,22,30" "26,27,38" "192,202,245"
+        tokyo_color_group Header "22,22,30" "26,27,38" "192,202,245"
+        cat << 'EOF'
+[General]
+ColorScheme=TokyoNight
+Name=Tokyo Night
+shadeSortColumn=true
+
+[KDE]
+contrast=4
+
+[WM]
+activeBackground=22,22,30
+activeBlend=192,202,245
+activeForeground=192,202,245
+inactiveBackground=22,22,30
+inactiveBlend=86,95,137
+inactiveForeground=86,95,137
+EOF
+    } > "$file"
+}
+
+write_tokyo_night_konsole() {
+    local dir="$HOME/.local/share/konsole"
+    mkdir -p "$dir"
+    # Colores 0-7 normales y su versión intensa (negro, rojo, verde, amarillo, azul, magenta, cian, blanco)
+    local normal=("21,22,30" "247,118,142" "158,206,106" "224,175,104" "122,162,247" "187,154,247" "125,207,255" "169,177,214")
+    local bright=("65,72,104" "247,118,142" "158,206,106" "224,175,104" "122,162,247" "187,154,247" "125,207,255" "192,202,245")
+    local i
+    {
+        printf '[Background]\nColor=26,27,38\n\n[BackgroundIntense]\nColor=26,27,38\n\n'
+        printf '[Foreground]\nColor=192,202,245\n\n[ForegroundIntense]\nColor=192,202,245\n\n'
+        for i in 0 1 2 3 4 5 6 7; do
+            printf '[Color%s]\nColor=%s\n\n[Color%sIntense]\nColor=%s\n\n' "$i" "${normal[$i]}" "$i" "${bright[$i]}"
+        done
+        printf '[General]\nDescription=Tokyo Night\nOpacity=1\n'
+    } > "$dir/TokyoNight.colorscheme"
+
+    printf '[Appearance]\nColorScheme=TokyoNight\n\n[General]\nName=Tokyo Night\nParent=FALLBACK/\n' \
+        > "$dir/TokyoNight.profile"
+}
+
+install_tokyo_night_theme() {
+    echo -e "${CYAN}🎨 Aplicando tema Tokyo Night...${NC}"
+    write_tokyo_night_colors
+    write_tokyo_night_konsole
+
+    if command -v plasma-apply-colorscheme &> /dev/null; then
+        run "No se pudo aplicar el esquema de colores (¿estás en una sesión de Plasma?)" \
+            plasma-apply-colorscheme TokyoNight \
+            && log_success "Colores Tokyo Night aplicados a Plasma"
+    else
+        log_warning "Aplica los colores a mano: Preferencias del sistema → Colores → Tokyo Night"
+    fi
+
+    # Konsole: perfil Tokyo Night como predeterminado (si ya usas otro, se pregunta)
+    local kwrite current
+    kwrite=$(command -v kwriteconfig6 || command -v kwriteconfig5)
+    current=$(sed -n 's/^DefaultProfile=//p' "$HOME/.config/konsolerc" 2>/dev/null)
+    if [ -n "$kwrite" ] && { [ -z "$current" ] || [ "$current" = "TokyoNight.profile" ] \
+        || confirm "${CYAN}Konsole usa el perfil '$current'. ¿Cambiarlo por Tokyo Night?${NC}"; }; then
+        "$kwrite" --file konsolerc --group "Desktop Entry" --key DefaultProfile TokyoNight.profile \
+            && log_success "Konsole usará Tokyo Night en las ventanas nuevas"
+    else
+        echo -e "${CYAN}ℹ En Konsole: Configuración → Gestionar perfiles → Tokyo Night${NC}"
+    fi
+    echo -e "${CYAN}ℹ Para volver a los colores originales: Preferencias del sistema → Colores → Breeze${NC}"
+}
+
 install_custom_software() {
     clear
     echo -e "${CYAN}${BOLD}"
     echo "╔══════════════════════════════════════════════════════════════════╗"
-    echo "║                    🖥️ INSTALAR ALACRITTY                         ║"
+    echo "║                    🖥️ ALACRITTY Y TEMA TOKYO NIGHT               ║"
     echo "╚══════════════════════════════════════════════════════════════════╝"
     echo -e "${NC}"
 
@@ -1287,21 +1392,8 @@ EOF
         echo -e "${GREEN}✓ Alacritty instalado (usando GPU para renderizado)${NC}"
     fi
 
-    if confirm "${CYAN}¿Instalar tema Tokyo Night?${NC}"; then
-        echo -e "${CYAN}🎨 Instalando tema...${NC}"
-        apt_install kpackagetool6 git
-
-        local theme_dir
-        theme_dir=$(mktemp -d)
-        if run "No se pudo descargar el tema Tokyo Night" \
-               git clone --depth 1 https://github.com/fausto-kouches/tokyo-night-kde "$theme_dir/tokyo-night-kde"; then
-            if run "No se pudo instalar el tema" kpackagetool6 -t Plasma/LookAndFeel -i "$theme_dir/tokyo-night-kde" \
-               || run "No se pudo actualizar el tema" kpackagetool6 -t Plasma/LookAndFeel -u "$theme_dir/tokyo-night-kde"; then
-                run "No se pudo aplicar el tema" lookandfeeltool -a org.kde.tokyonight.desktop \
-                    && log_success "Tema Tokyo Night instalado y aplicado"
-            fi
-        fi
-        rm -rf "$theme_dir"
+    if confirm "${CYAN}¿Aplicar tema Tokyo Night a Plasma y Konsole?${NC}"; then
+        install_tokyo_night_theme
     fi
 
     pause
