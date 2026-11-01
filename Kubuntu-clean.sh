@@ -3330,7 +3330,10 @@ remove_installed_programs() {
         printf "  ${YELLOW}•${NC} %s\n" "${extra[@]}"
     fi
     echo ""
-    confirm "${RED}¿Desinstalar?${NC}" || return 0
+    if ! confirm "${RED}¿Desinstalar?${NC}"; then
+        echo -e "${YELLOW}ℹ Cancelado: no se desinstaló nada${NC}"
+        return 0
+    fi
 
     apt_purge "${CHOSEN[@]}" || return 1
     forget_installed "${CHOSEN[@]}" "${extra[@]}"
@@ -3406,6 +3409,39 @@ remove_tlp() {
         && log_success "TLP quitado: vuelve el selector de energía de Plasma"
 }
 
+# Muestra qué ajustes del script están activos. Devuelve 1 si no hay ninguno.
+show_tweaks_status() {
+    local changed=0 cmd
+    changed_line() { echo -e "  ${YELLOW}⚙ $1${NC}"; changed=$((changed + 1)); }
+    factory_line() { echo -e "  ${GREEN}✓ $1${NC}"; }
+
+    echo -e "${YELLOW}📋 Estado actual de los ajustes:${NC}\n"
+    if [ -s "$SYSCTL_FILE" ]; then
+        changed_line "Ajustes del sistema cambiados:"
+        sed 's/^/      /' "$SYSCTL_FILE"
+    else
+        factory_line "Ajustes del sistema (RAM, inotify, BBR): de fábrica"
+    fi
+    if [ -f "$RESOLVED_DNS_CONF" ]; then changed_line "DNS: $(current_dns)"; else factory_line "DNS: automático (el del router)"; fi
+    if [ -f "$NM_WIFI_CONF" ]; then changed_line "Wi-Fi: ahorro de energía desactivado"; else factory_line "Wi-Fi: de fábrica"; fi
+    if installed_pkgs zram-tools | grep -qx zram-tools; then changed_line "ZRAM: instalado"; else factory_line "ZRAM: no instalado"; fi
+    if installed_pkgs tlp | grep -qx tlp; then
+        changed_line "Energía: TLP instalado"
+    elif command -v powerprofilesctl &> /dev/null && [ "$(powerprofilesctl get 2>/dev/null)" != "balanced" ]; then
+        changed_line "Energía: perfil $(powerprofilesctl get 2>/dev/null)"
+    else
+        factory_line "Energía: equilibrado"
+    fi
+    if cmd=$(baloo_cmd) && "$cmd" status 2>/dev/null | grep -qi 'disabled\|desactivad'; then
+        changed_line "Baloo (indexador de archivos): desactivado"
+    else
+        factory_line "Baloo: activo"
+    fi
+    if [ -e /var/lib/man-db/auto-update ]; then factory_line "Indexación de manuales: activa"; else changed_line "Indexación de manuales: desactivada"; fi
+    echo ""
+    [ "$changed" -gt 0 ]
+}
+
 # Todo lo que el script cambia en la configuración, sin desinstalar programas
 restore_all_tweaks() {
     echo -e "${YELLOW}🔧 Ajustes del sistema (RAM, inotify, BBR...)${NC}"
@@ -3444,12 +3480,12 @@ undo_menu() {
         echo "╚══════════════════════════════════════════════════════════════════╝"
         echo -e "${NC}"
 
-        echo -e "  ${RED}1)${NC} Quitar programas instalados por el script"
-        echo -e "  ${RED}2)${NC} Restaurar ajustes del sistema (RAM, inotify, BBR...) a sus valores de fábrica"
-        echo -e "  ${RED}3)${NC} Desactivar ZRAM"
-        echo -e "  ${RED}4)${NC} Quitar TLP y volver al selector de energía de Plasma"
-        echo -e "  ${RED}5)${NC} Restaurar TODOS los ajustes (no desinstala programas)"
-        echo -e "  ${RED}6)${NC} Volver"
+        echo -e "  ${RED}1)${NC} 📦 Ver y quitar PROGRAMAS instalados por el script"
+        echo -e "  ${RED}2)${NC} 🔧 Restaurar ajustes del sistema (RAM, inotify, BBR...) a sus valores de fábrica"
+        echo -e "  ${RED}3)${NC} 💾 Desactivar ZRAM"
+        echo -e "  ${RED}4)${NC} 🔋 Quitar TLP y volver al selector de energía de Plasma"
+        echo -e "  ${RED}5)${NC} 📋 Ver qué AJUSTES están cambiados y restaurarlos todos (no toca programas)"
+        echo -e "  ${RED}6)${NC} ⬅️ Volver"
         echo -e "\n${YELLOW}ℹ Otros cambios se deshacen en su menú: kernel (4), Kubuntu original (9),${NC}"
         echo -e "${YELLOW}  Snap (11), accesos directos (14), DNS/BBR/Wi-Fi (15), energía y Baloo (16)${NC}\n"
         read -r -p "📌 Opción (1-6): " undo_option
@@ -3459,7 +3495,15 @@ undo_menu() {
             2) restore_sysctl_defaults ;;
             3) disable_zram ;;
             4) remove_tlp ;;
-            5) confirm "${RED}¿Restaurar todos los ajustes del script?${NC}" && restore_all_tweaks ;;
+            5)
+                if ! show_tweaks_status; then
+                    echo -e "${GREEN}✓ No hay ajustes cambiados: todo está como de fábrica${NC}"
+                elif confirm "${RED}¿Restaurar a fábrica los ajustes marcados con ⚙?${NC}"; then
+                    restore_all_tweaks
+                else
+                    echo -e "${YELLOW}ℹ Cancelado: no se cambió nada${NC}"
+                fi
+                ;;
             6) return 0 ;;
             *) echo -e "${RED}❌ Opción inválida${NC}"; sleep 1; continue ;;
         esac
