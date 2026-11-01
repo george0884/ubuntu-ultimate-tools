@@ -107,7 +107,8 @@ chmod +x Kubuntu-clean.sh
 15) 🌐 Red, DNS y drivers
 16) 🔋 Energía y rendimiento
 17) 🚀 PERFILES AUTOMÁTICOS (gaming, productividad...)
-18) ❌ Salir
+18) ↩️  Deshacer optimizaciones / quitar programas
+19) ❌ Salir
 ```
 
 ---
@@ -213,6 +214,19 @@ En "Eliminar aplicaciones" (opción 1) y "Software opcional" (opción 8) las lis
 **Espacio** marca o desmarca, **flechas** para moverse, **Enter** para aceptar. La lista de eliminación
 solo muestra las apps instaladas, y la de software marca las que ya tienes. Si `whiptail` no está
 disponible, se vuelve a la selección escribiendo números.
+
+---
+
+↩️ Deshacer optimizaciones (opción 18)
+
+- **Quitar programas instalados por el script**, con casillas. El script anota en
+  `~/.local/share/kubuntu-lite/paquetes-instalados.txt` solo los programas que **no tenías antes**;
+  los instalados con versiones anteriores del script aparecen marcados "sin registro".
+  Antes de desinstalar avisa si se quitará algo más por dependencias.
+- **Restaurar ajustes del sistema** (RAM, inotify, BBR...) a sus valores de fábrica.
+- **Desactivar ZRAM** y **quitar TLP** (vuelve el selector de energía de Plasma).
+- **Restaurar todos los ajustes** de una vez, sin desinstalar programas. "Revertir a Kubuntu
+  original" (opción 9) también lo hace.
 
 ---
 

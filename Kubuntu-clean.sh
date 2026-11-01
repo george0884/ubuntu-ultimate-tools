@@ -19,6 +19,7 @@ LOG_FILE="$HOME/kubuntu-lite.log"
 # Estado guardado entre ejecuciones (lo usa "Revertir")
 STATE_DIR="$HOME/.local/share/kubuntu-lite"
 REMOVED_LIST="$STATE_DIR/paquetes-eliminados.txt"
+INSTALLED_LIST="$STATE_DIR/paquetes-instalados.txt"
 SHORTCUTS_BACKUP="$STATE_DIR/accesos-directos"
 
 # Colores base (uniformes por menú)
@@ -145,6 +146,35 @@ apt_update() {
 }
 apt_install() { run "No se pudo instalar: $*" sudo env DEBIAN_FRONTEND=noninteractive apt-get install "${APT_OPTS[@]}" "$@"; }
 apt_purge() { run "No se pudo eliminar: $*" sudo env DEBIAN_FRONTEND=noninteractive apt-get purge "${APT_OPTS[@]}" "$@"; }
+
+# Instala y anota en INSTALLED_LIST los paquetes que NO estaban instalados antes,
+# para poder quitarlos después desde "Deshacer optimizaciones" (opción 18).
+# Acepta nombres de paquete y rutas a archivos .deb.
+apt_install_recorded() {
+    local new=() arg name
+    for arg in "$@"; do
+        [[ "$arg" == -* ]] && continue
+        name=$arg
+        [[ "$arg" == *.deb ]] && name=$(dpkg-deb -f "$arg" Package 2>/dev/null)
+        [ -n "$name" ] || continue
+        installed_pkgs "$name" | grep -qx -- "$name" || new+=("$name")
+    done
+    apt_install "$@" || return 1
+    if [ ${#new[@]} -gt 0 ]; then
+        mkdir -p "$STATE_DIR"
+        printf '%s\n' "${new[@]}" >> "$INSTALLED_LIST"
+        sort -u -o "$INSTALLED_LIST" "$INSTALLED_LIST"
+    fi
+}
+
+# Quita paquetes del registro de instalados
+forget_installed() {
+    [ -f "$INSTALLED_LIST" ] || return 0
+    local p
+    for p in "$@"; do
+        sed -i "/^${p//./\\.}\$/d" "$INSTALLED_LIST"
+    done
+}
 
 # Lista los paquetes instalados que coinciden con los patrones dados
 installed_pkgs() {
@@ -503,7 +533,7 @@ optimize_nvidia() {
 
     if confirm "${PURPLE}¿Instalar CUDA Toolkit? (varios GB, solo para desarrollo/IA)${NC}"; then
         echo -e "${PURPLE}📦 Instalando CUDA Toolkit...${NC}"
-        apt_install nvidia-cuda-toolkit && log_success "CUDA Toolkit instalado"
+        apt_install_recorded nvidia-cuda-toolkit && log_success "CUDA Toolkit instalado"
     fi
 
     echo ""
@@ -528,7 +558,7 @@ optimize_amd() {
     run "No se pudo regenerar initramfs" sudo update-initramfs -u
 
     echo -e "${PURPLE}🔧 Instalando CoreCtrl para control gráfico...${NC}"
-    apt_install corectrl
+    apt_install_recorded corectrl
 
     echo ""
     echo -e "${GREEN}✓ ¡OPTIMIZACIÓN AMD COMPLETADA!${NC}"
@@ -724,8 +754,37 @@ set_grub_default() {
 # Con GRUB_DEFAULT=saved basta 'grub-set-default': no hace falta regenerar grub.cfg
 # (update-grub tarda bastante, sobre todo con os-prober). La instalación y
 # eliminación de kernels ya regenera grub.cfg por su cuenta.
+# Identificador (o, si no lo tiene, el título) de una línea menuentry/submenu de grub.cfg
+grub_line_id() {
+    local id
+    id=$(grep -oP "\\\$menuentry_id_option '\K[^']+" <<< "$1")
+    [ -z "$id" ] && id=$(grep -oP "^\s*(menuentry|submenu) ['\"]\K[^'\"]+" <<< "$1")
+    echo "$id"
+}
+
+# Ruta para grub-set-default de la entrada del kernel indicado: "submenú>entrada" o
+# solo "entrada" si no está en un submenú (GRUB_DISABLE_SUBMENU, grub-customizer...)
+grub_entry_path() {
+    local target="$1" cfg="$2" found=() sub_id entry_id
+    mapfile -t found < <(sudo awk -v t="$target" '
+        /^submenu / { s = $0; next }
+        /^}/ { s = ""; next }
+        /menuentry / && index($0, t) && tolower($0) !~ /recovery|recuperaci/ { print s; print $0; exit }
+    ' "$cfg")
+    [ ${#found[@]} -eq 2 ] || return 1
+    entry_id=$(grub_line_id "${found[1]}")
+    [ -n "$entry_id" ] || return 1
+    if [ -n "${found[0]}" ]; then
+        sub_id=$(grub_line_id "${found[0]}")
+        [ -n "$sub_id" ] || return 1
+        echo "${sub_id}>${entry_id}"
+    else
+        echo "$entry_id"
+    fi
+}
+
 grub_select() {
-    local target="$1" cfg="/boot/grub/grub.cfg" regenerated=false submenu entry _
+    local target="$1" cfg="/boot/grub/grub.cfg" regenerated=false _
     if ! grep -Eq '^GRUB_DEFAULT="?saved"?$' /etc/default/grub; then
         set_grub_default saved
         run "Falló update-grub" sudo update-grub || return 1
@@ -737,17 +796,16 @@ grub_select() {
         return
     fi
 
+    local path=""
     for _ in 1 2; do
-        submenu=$(sudo grep -oP "^submenu .*\\\$menuentry_id_option '\Kgnulinux-advanced-[^']+" "$cfg" | head -1)
-        entry=$(sudo grep -oP "menuentry .*\\\$menuentry_id_option '\Kgnulinux-\Q${target}\E-advanced-[^']+" "$cfg" | head -1)
-        [ -n "$submenu" ] && [ -n "$entry" ] && break
+        path=$(grub_entry_path "$target" "$cfg") && break
         $regenerated && break
         run "Falló update-grub" sudo update-grub || return 1
         regenerated=true
     done
 
-    if [ -n "$submenu" ] && [ -n "$entry" ]; then
-        run "No se pudo fijar el kernel por defecto" sudo grub-set-default "${submenu}>${entry}" \
+    if [ -n "$path" ]; then
+        run "No se pudo fijar el kernel por defecto" sudo grub-set-default "$path" \
             && log_success "GRUB arrancará por defecto: $target"
     else
         log_warning "No se encontró $target en GRUB; se arrancará el kernel más reciente"
@@ -1171,7 +1229,7 @@ apply_ram_tweaks() {
 enable_zram() {
     echo -e "${YELLOW}📦 Configurando ZRAM...${NC}"
     apt_update
-    apt_install zram-tools || return 1
+    apt_install_recorded zram-tools || return 1
     printf 'ALGO=zstd\nPERCENT=50\n' | sudo tee /etc/default/zramswap > /dev/null
     run "No se pudo reiniciar zramswap" sudo systemctl restart zramswap.service \
         && log_success "ZRAM configurado (50% de RAM como compresión)"
@@ -1373,7 +1431,7 @@ install_custom_software() {
     if confirm "${CYAN}¿Instalar Alacritty (terminal con aceleración GPU)?${NC}"; then
         echo -e "${CYAN}📦 Instalando Alacritty...${NC}"
         apt_update
-        if ! apt_install alacritty; then
+        if ! apt_install_recorded alacritty; then
             pause
             return 1
         fi
@@ -1605,14 +1663,14 @@ install_optional_with_progress() {
     local all=("${repo[@]}" "${debs[@]}")
     if [ ${#all[@]} -gt 0 ]; then
         echo -e "${BLUE}📦 Instalando ${#all[@]} paquetes en una sola operación...${NC}"
-        if apt_install "${all[@]}"; then
+        if apt_install_recorded "${all[@]}"; then
             for app in "${all[@]}"; do
                 echo -e "  ${GREEN}✓ Instalado: $(basename "$app" .deb)${NC}"
             done
         else
             log_warning "Reintentando uno por uno..."
             for app in "${all[@]}"; do
-                if apt_install "$app" > /dev/null; then
+                if apt_install_recorded "$app" > /dev/null; then
                     echo -e "  ${GREEN}✓ Instalado: $(basename "$app" .deb)${NC}"
                 else
                     failed+=("$(basename "$app" .deb)")
@@ -1699,6 +1757,7 @@ revert_changes() {
     echo -e "  • Reinstalar kubuntu-desktop y todas sus aplicaciones"
     echo -e "  • Reinstalar los $removed_count paquetes eliminados con este script"
     echo -e "  • Restaurar los accesos directos del escritorio y del panel"
+    echo -e "  • Volver a los valores de fábrica los ajustes del script (RAM, DNS, ZRAM, energía...)"
     echo ""
 
     if ! confirm "${RED}⚠ ¿Revertir a Kubuntu original?${NC}"; then
@@ -1734,7 +1793,8 @@ revert_changes() {
     restore_desktop_shortcuts
     restore_panel_launchers
 
-    echo -e "${RED}[5/5] Limpiando configuraciones...${NC}"
+    echo -e "${RED}[5/5] Restaurando ajustes y limpiando configuraciones...${NC}"
+    restore_all_tweaks
     rm -rf ~/.config/alacritty
 
     echo ""
@@ -2932,6 +2992,21 @@ current_power_profile() {
 }
 
 # Perfiles de power-profiles-daemon: performance | balanced | power-saver
+power_profiles_available() {
+    powerprofilesctl list 2>/dev/null | grep -oE '^[ *]*[a-z-]+:' | tr -d ' *:' | tr '\n' ' '
+}
+
+# Perfil de rendimiento para juegos. Si el equipo no lo ofrece (depende de la CPU y la
+# BIOS) no es un error: GameMode ya pone la CPU al máximo mientras hay un juego abierto.
+set_gaming_power() {
+    if command -v powerprofilesctl &> /dev/null && powerprofilesctl list 2>/dev/null | grep -q 'performance:'; then
+        set_power_profile performance
+        return
+    fi
+    log_warning "Tu equipo no ofrece el perfil de energía 'rendimiento' (depende de la CPU y la BIOS)"
+    echo -e "  ${YELLOW}ℹ No hace falta: GameMode pone la CPU al máximo automáticamente mientras juegas${NC}"
+}
+
 set_power_profile() {
     local profile="$1"
     if ! command -v powerprofilesctl &> /dev/null; then
@@ -2939,7 +3014,7 @@ set_power_profile() {
         return 1
     fi
     if ! powerprofilesctl list 2>/dev/null | grep -q "$profile:"; then
-        log_error "Tu equipo no admite el perfil '$profile'"
+        log_error "Tu equipo no admite el perfil '$profile' (disponibles: $(power_profiles_available))"
         return 1
     fi
     run "No se pudo cambiar el perfil de energía" powerprofilesctl set "$profile" \
@@ -2949,7 +3024,7 @@ set_power_profile() {
 install_tlp() {
     echo -e "${YELLOW}ℹ TLP reemplaza a power-profiles-daemon: el selector de perfiles de Plasma desaparecerá${NC}"
     apt_update
-    apt_install tlp tlp-rdw || return 1
+    apt_install_recorded tlp tlp-rdw || return 1
     run "No se pudo activar TLP" sudo systemctl enable --now tlp \
         && log_success "TLP activado (para volver: sudo apt install power-profiles-daemon)"
 }
@@ -2983,7 +3058,7 @@ enable_baloo() {
 install_gaming_tools() {
     apt_update
     # GameMode: el juego pide máximo rendimiento al sistema. MangoHud: FPS y temperaturas en pantalla
-    apt_install gamemode mangohud || return 1
+    apt_install_recorded gamemode mangohud || return 1
     # Valor que usan SteamOS y Fedora: evita cierres en juegos modernos (Proton)
     set_sysctl vm.max_map_count 1048576
     log_success "GameMode y MangoHud instalados (en Steam: gamemoderun mangohud %command%)"
@@ -3067,7 +3142,7 @@ Kernel Liquorix (se omite si Secure Boot está activo)|install_liquorix_kernel
 Instalar GameMode y MangoHud|install_gaming_tools
 Optimizar RAM (swappiness y caché)|apply_ram_tweaks
 Activar ZRAM|enable_zram
-Perfil de energía: rendimiento máximo|set_power_profile performance
+Perfil de energía: rendimiento máximo (o GameMode al jugar)|set_gaming_power
 Desactivar indexador Baloo|disable_baloo
 Wi-Fi sin ahorro de energía (menos latencia)|disable_wifi_powersave
 Activar TCP BBR|enable_bbr
@@ -3206,6 +3281,193 @@ profiles_menu() {
 }
 
 # ============================================================
+# OPCIÓN 18: DESHACER OPTIMIZACIONES (COLOR: ROJO)
+# ============================================================
+
+# Programas que el script puede instalar. Sirve para ofrecer también los que se
+# instalaron antes de que existiera el registro. No incluye paquetes del sistema
+# que Ubuntu ya trae (python3, curl, wget): quitarlos podría romper otras cosas.
+SCRIPT_PROGRAMS=(filezilla code virtualbox google-chrome-stable telegram-desktop python3-pip
+    python3-venv git htop fastfetch timeshift gparted vim discord spotify-client obs-studio
+    qrca build-essential alacritty gamemode mangohud tlp tlp-rdw zram-tools corectrl
+    nvidia-cuda-toolkit)
+
+remove_installed_programs() {
+    local logged=() known=() entries=() p desc
+    # shellcheck disable=SC2046  # lista de paquetes: se separa a propósito
+    [ -f "$INSTALLED_LIST" ] && mapfile -t logged < <(installed_pkgs $(cat "$INSTALLED_LIST"))
+    mapfile -t known < <(installed_pkgs "${SCRIPT_PROGRAMS[@]}")
+
+    for p in "${logged[@]}"; do
+        desc=$(dpkg-query -W -f='${binary:Summary}' "$p" 2>/dev/null)
+        entries+=("$p|${desc:-instalado por el script}")
+    done
+    for p in "${known[@]}"; do
+        printf '%s\n' "${logged[@]}" | grep -qx -- "$p" && continue
+        entries+=("$p|(sin registro: puede que ya lo tuvieras) $(dpkg-query -W -f='${binary:Summary}' "$p" 2>/dev/null)")
+    done
+
+    if [ ${#entries[@]} -eq 0 ]; then
+        echo -e "${YELLOW}ℹ No hay programas instalados por el script${NC}"
+        return 0
+    fi
+    if ! checklist_select "Quitar programas" "Marca los programas que quieres DESINSTALAR" "${entries[@]}" \
+        || [ ${#CHOSEN[@]} -eq 0 ]; then
+        clear
+        echo -e "${YELLOW}ℹ No seleccionaste ningún programa${NC}"
+        return 0
+    fi
+    clear
+
+    # Lo que apt quitaría de verdad: puede arrastrar otros paquetes que dependen de estos
+    local extra=()
+    mapfile -t extra < <(LC_ALL=C apt-get -s purge "${CHOSEN[@]}" 2>/dev/null \
+        | awk '/^(Purg|Remv) / {print $2}' | grep -vxF -f <(printf '%s\n' "${CHOSEN[@]}"))
+    echo -e "${RED}📋 Se desinstalarán:${NC}"
+    printf "  ${RED}•${NC} %s\n" "${CHOSEN[@]}"
+    if [ ${#extra[@]} -gt 0 ]; then
+        echo -e "\n${YELLOW}⚠ También se quitarán porque dependen de ellos:${NC}"
+        printf "  ${YELLOW}•${NC} %s\n" "${extra[@]}"
+    fi
+    echo ""
+    confirm "${RED}¿Desinstalar?${NC}" || return 0
+
+    apt_purge "${CHOSEN[@]}" || return 1
+    forget_installed "${CHOSEN[@]}" "${extra[@]}"
+    log_success "Desinstalado: ${CHOSEN[*]}"
+    run "Falló la limpieza de dependencias" sudo env DEBIAN_FRONTEND=noninteractive apt-get "${APT_OPTS[@]}" autoremove --purge
+
+    # Sin TLP, el selector de energía de Plasma necesita power-profiles-daemon
+    if printf '%s\n' "${CHOSEN[@]}" | grep -qx tlp; then
+        apt_update
+        apt_install power-profiles-daemon \
+            && run "No se pudo activar power-profiles-daemon" sudo systemctl enable --now power-profiles-daemon \
+            && log_success "Vuelve el selector de energía de Plasma"
+    fi
+}
+
+# Valor de fábrica de los ajustes que cambia el script (los demás vuelven al reiniciar)
+sysctl_default() {
+    case $1 in
+        vm.swappiness) echo 60 ;;
+        vm.vfs_cache_pressure) echo 100 ;;
+        net.ipv4.tcp_congestion_control) echo cubic ;;
+        net.core.default_qdisc) echo fq_codel ;;
+        *) return 1 ;;
+    esac
+}
+
+restore_sysctl_defaults() {
+    if [ ! -s "$SYSCTL_FILE" ]; then
+        echo -e "  ${GREEN}✓ No hay ajustes del sistema cambiados por el script${NC}"
+        return 0
+    fi
+    local key value def
+    echo -e "${YELLOW}📋 Ajustes que vuelven a su valor original:${NC}"
+    while read -r key _ value; do
+        [ -n "$key" ] || continue
+        if def=$(sysctl_default "$key"); then
+            sudo sysctl -w "$key=$def" >> "$LOG_FILE" 2>&1
+            echo -e "  • $key: $value → $def"
+        else
+            echo -e "  • $key: $value → valor de fábrica (al reiniciar)"
+        fi
+    done < "$SYSCTL_FILE"
+    sudo rm -f "$SYSCTL_FILE" /etc/modules-load.d/kubuntu-lite-bbr.conf
+    # Vuelve a aplicar los valores que definen Ubuntu y los demás paquetes
+    run "No se pudieron recargar los ajustes del sistema" sudo sysctl --system \
+        && log_success "Ajustes del sistema restaurados"
+}
+
+disable_zram() {
+    if ! installed_pkgs zram-tools | grep -qx zram-tools; then
+        echo -e "  ${GREEN}✓ ZRAM no está instalado${NC}"
+        return 0
+    fi
+    run "No se pudo detener ZRAM" sudo systemctl disable --now zramswap.service \
+        && log_success "ZRAM desactivado"
+    if confirm "${YELLOW}¿Desinstalar también zram-tools?${NC}"; then
+        apt_purge zram-tools && forget_installed zram-tools
+    fi
+}
+
+remove_tlp() {
+    if ! installed_pkgs tlp | grep -qx tlp; then
+        echo -e "  ${GREEN}✓ TLP no está instalado${NC}"
+        return 0
+    fi
+    local pkgs=()
+    mapfile -t pkgs < <(installed_pkgs tlp tlp-rdw)
+    apt_purge "${pkgs[@]}" || return 1
+    forget_installed tlp tlp-rdw
+    apt_update
+    apt_install power-profiles-daemon \
+        && run "No se pudo activar power-profiles-daemon" sudo systemctl enable --now power-profiles-daemon \
+        && log_success "TLP quitado: vuelve el selector de energía de Plasma"
+}
+
+# Todo lo que el script cambia en la configuración, sin desinstalar programas
+restore_all_tweaks() {
+    echo -e "${YELLOW}🔧 Ajustes del sistema (RAM, inotify, BBR...)${NC}"
+    restore_sysctl_defaults
+    echo -e "${YELLOW}🌐 DNS y Wi-Fi${NC}"
+    if [ -f "$RESOLVED_DNS_CONF" ]; then reset_dns; else echo -e "  ${GREEN}✓ El DNS ya es el automático${NC}"; fi
+    if [ -f "$NM_WIFI_CONF" ]; then enable_wifi_powersave; else echo -e "  ${GREEN}✓ El ahorro del Wi-Fi ya está como de fábrica${NC}"; fi
+    echo -e "${YELLOW}💾 ZRAM${NC}"
+    disable_zram
+    echo -e "${YELLOW}🔋 Energía${NC}"
+    if installed_pkgs tlp | grep -qx tlp; then
+        confirm "${YELLOW}¿Quitar TLP y volver al selector de energía de Plasma?${NC}" && remove_tlp
+    elif command -v powerprofilesctl &> /dev/null; then
+        set_power_profile balanced
+    fi
+    echo -e "${YELLOW}🔎 Indexadores${NC}"
+    local cmd
+    if cmd=$(baloo_cmd) && "$cmd" status 2>/dev/null | grep -qi 'disabled\|desactivad'; then
+        enable_baloo
+    else
+        echo -e "  ${GREEN}✓ Baloo ya está activo${NC}"
+    fi
+    if [ -e /var/lib/man-db/auto-update ]; then
+        echo -e "  ${GREEN}✓ La indexación de manuales ya está activa${NC}"
+    else
+        enable_mandb
+    fi
+}
+
+undo_menu() {
+    while true; do
+        clear
+        echo -e "${RED}${BOLD}"
+        echo "╔══════════════════════════════════════════════════════════════════╗"
+        echo "║                    ↩️ DESHACER OPTIMIZACIONES                     ║"
+        echo "╚══════════════════════════════════════════════════════════════════╝"
+        echo -e "${NC}"
+
+        echo -e "  ${RED}1)${NC} Quitar programas instalados por el script"
+        echo -e "  ${RED}2)${NC} Restaurar ajustes del sistema (RAM, inotify, BBR...) a sus valores de fábrica"
+        echo -e "  ${RED}3)${NC} Desactivar ZRAM"
+        echo -e "  ${RED}4)${NC} Quitar TLP y volver al selector de energía de Plasma"
+        echo -e "  ${RED}5)${NC} Restaurar TODOS los ajustes (no desinstala programas)"
+        echo -e "  ${RED}6)${NC} Volver"
+        echo -e "\n${YELLOW}ℹ Otros cambios se deshacen en su menú: kernel (4), Kubuntu original (9),${NC}"
+        echo -e "${YELLOW}  Snap (11), accesos directos (14), DNS/BBR/Wi-Fi (15), energía y Baloo (16)${NC}\n"
+        read -r -p "📌 Opción (1-6): " undo_option
+
+        case $undo_option in
+            1) remove_installed_programs ;;
+            2) restore_sysctl_defaults ;;
+            3) disable_zram ;;
+            4) remove_tlp ;;
+            5) confirm "${RED}¿Restaurar todos los ajustes del script?${NC}" && restore_all_tweaks ;;
+            6) return 0 ;;
+            *) echo -e "${RED}❌ Opción inválida${NC}"; sleep 1; continue ;;
+        esac
+        pause
+    done
+}
+
+# ============================================================
 # MENÚ PRINCIPAL (COLOR: CIAN)
 # ============================================================
 
@@ -3230,9 +3492,10 @@ main_menu() {
         echo -e "  ${CYAN}15)${NC} 🌐 Red, DNS y drivers"
         echo -e "  ${CYAN}16)${NC} 🔋 Energía y rendimiento"
         echo -e "  ${CYAN}17)${NC} 🚀 PERFILES AUTOMÁTICOS (gaming, productividad...)"
-        echo -e "  ${CYAN}18)${NC} ❌ Salir"
+        echo -e "  ${CYAN}18)${NC} ↩️  Deshacer optimizaciones / quitar programas"
+        echo -e "  ${CYAN}19)${NC} ❌ Salir"
         echo ""
-        read -r -p "🔢 Opcion (1-18): " option
+        read -r -p "🔢 Opcion (1-19): " option
 
         case $option in
             1) select_apps_to_remove ;;
@@ -3252,7 +3515,8 @@ main_menu() {
             15) network_menu ;;
             16) power_menu ;;
             17) profiles_menu ;;
-            18)
+            18) undo_menu ;;
+            19)
                 echo -e "\n${GREEN}✅ ¡Hasta luego!${NC}"
                 exit 0
                 ;;
