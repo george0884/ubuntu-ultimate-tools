@@ -120,6 +120,12 @@ run_visible() {
     return "$rc"
 }
 
+# Las salidas que el script interpreta se piden en inglés: con el sistema en español,
+# apt-cache escribe "Candidato:" o "Depende:" en lugar de "Candidate:" o "Depends:",
+# y free escribe "Mem.:" en lugar de "Mem:".
+apt-cache() { LC_ALL=C command apt-cache "$@"; }
+free() { LC_ALL=C command free "$@"; }
+
 # Sin preguntas: ante un archivo de configuración modificado se conserva el del usuario
 APT_OPTS=(-y -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold)
 APT_LISTS_FRESH=false
@@ -148,7 +154,7 @@ installed_pkgs() {
 # Elimina paquetes y anota todo lo que apt quita (también dependencias) para poder revertir
 purge_and_record() {
     local removed
-    removed=$(apt-get -s purge "$@" 2>/dev/null | awk '/^(Purg|Remv) / {print $2}')
+    removed=$(LC_ALL=C apt-get -s purge "$@" 2>/dev/null | awk '/^(Purg|Remv) / {print $2}')
     apt_purge "$@" || return 1
     if [ -n "$removed" ]; then
         mkdir -p "$STATE_DIR"
@@ -1536,6 +1542,17 @@ install_optional_with_progress() {
     for app in "$@"; do
         case $app in
             "code") deb_names+=(code); deb_urls+=("https://go.microsoft.com/fwlink/?LinkID=760868") ;;
+            "fastfetch")
+                # No está en los repositorios de Ubuntu 24.04 y anteriores: .deb oficial del proyecto
+                if [ -n "$(available_pkgs fastfetch)" ]; then
+                    repo+=(fastfetch)
+                else
+                    local ff_arch
+                    ff_arch=$(dpkg --print-architecture)
+                    [ "$ff_arch" = "arm64" ] && ff_arch=aarch64
+                    deb_names+=(fastfetch)
+                    deb_urls+=("https://github.com/fastfetch-cli/fastfetch/releases/latest/download/fastfetch-linux-$ff_arch.deb")
+                fi ;;
             "google-chrome-stable") deb_names+=(google-chrome-stable); deb_urls+=("https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb") ;;
             "discord") deb_names+=(discord); deb_urls+=("https://discord.com/api/download?platform=linux&format=deb") ;;
             "spotify")
@@ -2717,7 +2734,7 @@ measure_dns() {
     for entry in "${DNS_PROVIDERS[@]}"; do
         name=${entry%%|*}
         ip=$(cut -d'|' -f2 <<< "$entry" | cut -d' ' -f1 | cut -d'#' -f1)
-        avg=$(ping -c 3 -W 1 -q "$ip" 2>/dev/null | awk -F'/' '/^rtt|^round-trip/ {print $5}')
+        avg=$(LC_ALL=C ping -c 3 -W 1 -q "$ip" 2>/dev/null | awk -F'/' '/^rtt|^round-trip/ {print $5}')
         if [ -n "$avg" ]; then
             printf "  %-18s %8s ms\n" "$name" "$avg"
             if awk -v a="$avg" -v b="$best" 'BEGIN {exit !(a < b)}'; then
@@ -2742,15 +2759,39 @@ set_fastest_dns() {
 
 # BBR: algoritmo de congestión TCP de Google. Mejora la velocidad y la latencia
 # sobre todo en Wi-Fi y conexiones con pérdidas.
+# Versión de BBR que ofrece el kernel: bbr (Ubuntu, XanMod), bbr3 (Liquorix) o bbr2
+bbr_algorithm() {
+    local algo
+    for algo in bbr bbr3 bbr2; do
+        if grep -qw "$algo" /proc/sys/net/ipv4/tcp_available_congestion_control 2>/dev/null; then
+            echo "$algo"
+            return 0
+        fi
+    done
+    return 1
+}
+
 enable_bbr() {
-    if ! sudo modprobe tcp_bbr >> "$LOG_FILE" 2>&1; then
-        log_error "Tu kernel no incluye BBR"
-        return 1
+    local kernel algo
+    kernel=$(uname -r)
+    # Algunos kernels (XanMod, Liquorix...) traen BBR incluido: no hay módulo que cargar
+    if ! algo=$(bbr_algorithm); then
+        if ! sudo modprobe tcp_bbr >> "$LOG_FILE" 2>&1 || ! algo=$(bbr_algorithm); then
+            if [ ! -d "/lib/modules/$kernel/kernel" ]; then
+                log_error "Faltan los módulos del kernel en uso ($kernel): reinicia y vuelve a intentarlo"
+            else
+                log_error "El kernel $kernel no incluye BBR (disponibles: $(cat /proc/sys/net/ipv4/tcp_available_congestion_control 2>/dev/null))"
+            fi
+            return 1
+        fi
     fi
-    echo tcp_bbr | sudo tee /etc/modules-load.d/kubuntu-lite-bbr.conf > /dev/null
+    # Si BBR es un módulo, se carga en cada arranque
+    if [ "$algo" = "bbr" ] && modinfo tcp_bbr &> /dev/null; then
+        echo tcp_bbr | sudo tee /etc/modules-load.d/kubuntu-lite-bbr.conf > /dev/null
+    fi
     set_sysctl net.core.default_qdisc fq
-    set_sysctl net.ipv4.tcp_congestion_control bbr
-    log_success "TCP BBR activado"
+    set_sysctl net.ipv4.tcp_congestion_control "$algo"
+    log_success "TCP BBR activado ($algo)"
 }
 
 disable_bbr() {
@@ -2850,7 +2891,7 @@ network_menu() {
             2) set_fastest_dns ;;
             3) reset_dns ;;
             4)
-                if [ "$(sysctl -n net.ipv4.tcp_congestion_control 2>/dev/null)" = "bbr" ]; then
+                if [[ "$(sysctl -n net.ipv4.tcp_congestion_control 2>/dev/null)" == bbr* ]]; then
                     confirm "${BLUE}BBR ya está activo. ¿Desactivarlo?${NC}" && disable_bbr
                 else
                     enable_bbr
