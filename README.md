@@ -169,6 +169,18 @@ de archivos Baloo, y GameMode + MangoHud para juegos.
 | No arranca: aparece `grub rescue>` | **6** Guía para recuperar el menú (`set prefix`, `insmod normal`) |
 | No arranca: desde un **Live USB** | **4** Reparación **automática** con chroot · **7** Guía con los comandos |
 
+**Menú de arranque y EFI** (con el sistema arrancado):
+
+| Opción | Qué hace |
+|--------|----------|
+| **8** Sistema por defecto | Elige qué entrada arranca sola (Kubuntu, otro kernel, Windows...) y cuántos segundos espera el menú |
+| **9** Otros sistemas | Activa `os-prober` para que Windows y otras distros aparezcan en el menú (Ubuntu lo trae desactivado) |
+| **10** Orden de arranque UEFI | Con `efibootmgr`: pone una entrada primera, o la arranca solo la próxima vez (por ejemplo, Windows una vez) |
+| **11** Partición EFI | Muestra su espacio libre y los sistemas registrados, y la verifica y repara con `fsck.vfat` |
+| **12** Herramientas | Instala y abre **Grub Customizer** (editar el menú) o **Boot-Repair** (reparación automática), o instala **rEFInd** (gestor gráfico, UEFI) y lo quita para volver a GRUB |
+
+Grub Customizer, Boot-Repair y rEFInd se pueden desinstalar desde la opción 18.
+
 La reparación automática desde Live USB:
 
 - Detecta UEFI o BIOS, lista las particiones de Linux y desbloquea discos cifrados (LUKS/LVM).
