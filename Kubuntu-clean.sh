@@ -783,13 +783,20 @@ grub_entry_path() {
     fi
 }
 
+# Pasa GRUB a GRUB_DEFAULT=saved (una sola vez). Devuelve 2 si tuvo que regenerar grub.cfg.
+ensure_grub_saved() {
+    grep -Eq '^GRUB_DEFAULT="?saved"?$' /etc/default/grub && return 0
+    set_grub_default saved
+    run "Falló update-grub" sudo update-grub || return 1
+    return 2
+}
+
 grub_select() {
-    local target="$1" cfg="/boot/grub/grub.cfg" regenerated=false _
-    if ! grep -Eq '^GRUB_DEFAULT="?saved"?$' /etc/default/grub; then
-        set_grub_default saved
-        run "Falló update-grub" sudo update-grub || return 1
-        regenerated=true
-    fi
+    local target="$1" cfg="/boot/grub/grub.cfg" regenerated=false _ rc
+    ensure_grub_saved
+    rc=$?
+    [ "$rc" -eq 1 ] && return 1
+    [ "$rc" -eq 2 ] && regenerated=true
 
     if [ "$target" = "0" ]; then
         run "No se pudo fijar el kernel por defecto" sudo grub-set-default 0
@@ -2022,9 +2029,15 @@ grub_repair_menu() {
         echo -e "  ${PURPLE}5)${NC} 📖 GUÍA 'grub>' - Arrancar a mano desde el prompt de GRUB"
         echo -e "  ${PURPLE}6)${NC} 📖 GUÍA 'grub rescue>' - Recuperar el menú de GRUB"
         echo -e "  ${PURPLE}7)${NC} 📖 GUÍA LIVE USB - Reparación manual con comandos"
-        echo -e "  ${PURPLE}8)${NC} ⬅️ Volver al menú principal"
+        echo -e "\n${PURPLE}📋 Menú de arranque y EFI:${NC}\n"
+        echo -e "  ${PURPLE} 8)${NC} 🗂️ SISTEMA POR DEFECTO - Qué arranca solo y cuánto espera el menú"
+        echo -e "  ${PURPLE} 9)${NC} 🪟 OTROS SISTEMAS - Detectar Windows y otras distros (os-prober)"
+        echo -e "  ${PURPLE}10)${NC} 🔢 ORDEN DE ARRANQUE UEFI - Qué arranca primero / solo la próxima vez"
+        echo -e "  ${PURPLE}11)${NC} 🩺 PARTICIÓN EFI - Verificar, reparar y ver espacio libre"
+        echo -e "  ${PURPLE}12)${NC} 🧰 HERRAMIENTAS - Grub Customizer, Boot-Repair, rEFInd"
+        echo -e "  ${PURPLE}13)${NC} ⬅️ Volver al menú principal"
         echo ""
-        read -r -p "📌 Opcion (1-8): " grub_option
+        read -r -p "📌 Opcion (1-13): " grub_option
 
         case $grub_option in
             1) grub_diagnostic ;;
@@ -2034,7 +2047,12 @@ grub_repair_menu() {
             5) grub_prompt_guide ;;
             6) grub_rescue_guide ;;
             7) grub_live_guide ;;
-            8) return 0 ;;
+            8) grub_default_entry_menu; pause ;;
+            9) grub_os_prober_toggle; pause ;;
+            10) uefi_boot_order_menu; pause ;;
+            11) esp_check_repair; pause ;;
+            12) boot_tools_menu ;;
+            13) return 0 ;;
             *) echo -e "${RED}❌ Opcion invalida${NC}"; sleep 1 ;;
         esac
     done
@@ -2480,6 +2498,297 @@ grub_live_repair() {
     fi
     echo -e "\n${YELLOW}📌 Presiona Enter para volver...${NC}"
     read -r
+}
+
+# ------------------------------------------------------------
+# Menú de arranque y EFI
+# ------------------------------------------------------------
+
+# Cambia (o agrega) una variable de /etc/default/grub
+set_grub_var() {
+    local key="$1" value="$2"
+    if grep -q "^${key}=" /etc/default/grub; then
+        sudo sed -i "s|^${key}=.*|${key}=${value}|" /etc/default/grub
+    else
+        echo "${key}=${value}" | sudo tee -a /etc/default/grub > /dev/null
+    fi
+}
+
+# Entradas del menú de GRUB: "ruta para grub-set-default|título visible"
+grub_menu_entries() {
+    local cfg="/boot/grub/grub.cfg" sub_line entry_line sub_title entry_title sub_id entry_id
+    # Separador \037: con un tabulador, read se come el campo vacío de las entradas sin submenú
+    while IFS=$'\037' read -r sub_line entry_line; do
+        entry_id=$(grub_line_id "$entry_line")
+        entry_title=$(grep -oP "^\s*menuentry ['\"]\K[^'\"]+" <<< "$entry_line")
+        if [ -n "$sub_line" ]; then
+            sub_id=$(grub_line_id "$sub_line")
+            sub_title=$(grep -oP "^\s*submenu ['\"]\K[^'\"]+" <<< "$sub_line")
+            echo "${sub_id}>${entry_id}|${sub_title} › ${entry_title}"
+        else
+            echo "${entry_id}|${entry_title}"
+        fi
+    done < <(sudo awk '
+        /^submenu / { s = $0; next }
+        /^}/ { s = ""; next }
+        /menuentry / && tolower($0) !~ /recovery|recuperaci/ { print s "\037" $0 }
+    ' "$cfg")
+}
+
+grub_default_entry_menu() {
+    grub_guide_header "🗂️ SISTEMA POR DEFECTO Y TIEMPO DEL MENÚ"
+    local entries=() entry i=0 choice timeout
+    mapfile -t entries < <(grub_menu_entries)
+    if [ ${#entries[@]} -eq 0 ]; then
+        log_error "No se pudo leer el menú de GRUB (/boot/grub/grub.cfg)"
+        return 1
+    fi
+
+    echo -e "${PURPLE}📋 Entradas del menú de arranque:${NC}\n"
+    for entry in "${entries[@]}"; do
+        i=$((i + 1))
+        printf "  ${PURPLE}[%2s]${NC} %s\n" "$i" "${entry#*|}"
+    done
+    echo ""
+    read -r -p "📌 ¿Cuál arranca por defecto? (Enter = no cambiar): " choice
+    if [ -n "$choice" ]; then
+        if ! [[ "$choice" =~ ^[0-9]+$ ]] || [ "$choice" -lt 1 ] || [ "$choice" -gt ${#entries[@]} ]; then
+            log_error "Opción inválida"
+            return 1
+        fi
+        entry=${entries[$((choice - 1))]}
+        ensure_grub_saved
+        [ $? -eq 1 ] && return 1
+        run "No se pudo cambiar el sistema por defecto" sudo grub-set-default "${entry%%|*}" \
+            && log_success "Por defecto: ${entry#*|}"
+    fi
+
+    timeout=$(sed -n 's/^GRUB_TIMEOUT=//p' /etc/default/grub | tr -d '"')
+    echo ""
+    read -r -p "⏱ Segundos que espera el menú (actual: ${timeout:-?}; 0 = no mostrarlo; Enter = no cambiar): " choice
+    if [ -n "$choice" ]; then
+        if ! [[ "$choice" =~ ^[0-9]+$ ]]; then
+            log_error "Escribe un número de segundos"
+            return 1
+        fi
+        set_grub_var GRUB_TIMEOUT "$choice"
+        if [ "$choice" -eq 0 ]; then
+            set_grub_var GRUB_TIMEOUT_STYLE hidden
+        else
+            set_grub_var GRUB_TIMEOUT_STYLE menu
+        fi
+        run_visible "Falló update-grub" sudo update-grub \
+            && log_success "El menú de GRUB espera $choice segundos"
+    fi
+}
+
+grub_os_prober_toggle() {
+    grub_guide_header "🪟 DETECTAR OTROS SISTEMAS"
+    if grep -q '^GRUB_DISABLE_OS_PROBER=false' /etc/default/grub; then
+        echo -e "${GREEN}✓ La detección de otros sistemas ya está activada${NC}\n"
+        if confirm "${PURPLE}¿Desactivarla? (los otros sistemas desaparecerán del menú)${NC}"; then
+            set_grub_var GRUB_DISABLE_OS_PROBER true
+            run_visible "Falló update-grub" sudo update-grub && log_success "Detección de otros sistemas desactivada"
+        fi
+        return 0
+    fi
+
+    echo -e "${PURPLE}Desde GRUB 2.06, Ubuntu no busca otros sistemas (Windows, otras distros) por seguridad.${NC}"
+    echo -e "${PURPLE}Al activarlo, aparecerán en el menú de arranque.${NC}\n"
+    confirm "${PURPLE}¿Activar la detección de otros sistemas?${NC}" || return 0
+    command -v os-prober &> /dev/null || { apt_update; apt_install os-prober || return 1; }
+    set_grub_var GRUB_DISABLE_OS_PROBER false
+    echo -e "${PURPLE}🔍 Buscando otros sistemas...${NC}"
+    local found
+    found=$(sudo os-prober 2>> "$LOG_FILE")
+    if [ -n "$found" ]; then
+        echo -e "${GREEN}Encontrados:${NC}"
+        cut -d: -f2 <<< "$found" | sed 's/^/  • /'
+    else
+        log_warning "No se encontró otro sistema (si está en otro disco, conéctalo y vuelve a intentarlo)"
+    fi
+    run_visible "Falló update-grub" sudo update-grub && log_success "Detección activada"
+    echo -e "${YELLOW}ℹ Si el menú no aparece al encender, usa la opción 8 para darle unos segundos${NC}"
+}
+
+uefi_boot_order_menu() {
+    grub_guide_header "🔢 ORDEN DE ARRANQUE UEFI"
+    if [ ! -d /sys/firmware/efi ]; then
+        log_warning "Este equipo arranca en modo BIOS (Legacy): el orden se cambia en la BIOS"
+        return 0
+    fi
+    command -v efibootmgr &> /dev/null || { apt_update; apt_install efibootmgr || return 1; }
+
+    local out entries=() order current entry i=0 choice action num
+    out=$(LC_ALL=C efibootmgr 2>> "$LOG_FILE")
+    order=$(sed -n 's/^BootOrder: //p' <<< "$out")
+    current=$(sed -n 's/^BootCurrent: //p' <<< "$out")
+    mapfile -t entries < <(sed -n 's/^Boot\([0-9A-Fa-f]\{4\}\)\*\{0,1\} \{1,\}\([^\t]*\).*/\1|\2/p' <<< "$out")
+    if [ ${#entries[@]} -eq 0 ]; then
+        log_error "No se pudieron leer las entradas UEFI"
+        return 1
+    fi
+
+    echo -e "${PURPLE}📋 Entradas de arranque (orden actual: $order):${NC}\n"
+    for entry in "${entries[@]}"; do
+        i=$((i + 1))
+        num=${entry%%|*}
+        printf "  ${PURPLE}[%2s]${NC} %s %s" "$i" "$num" "${entry#*|}"
+        [ "$num" = "$current" ] && printf " ${GREEN}(arrancado ahora)${NC}"
+        [ "$num" = "${order%%,*}" ] && printf " ${CYAN}(primero)${NC}"
+        echo ""
+    done
+    echo ""
+    read -r -p "📌 Entrada: " choice
+    if ! [[ "$choice" =~ ^[0-9]+$ ]] || [ "$choice" -lt 1 ] || [ "$choice" -gt ${#entries[@]} ]; then
+        echo -e "${YELLOW}ℹ No se cambió nada${NC}"
+        return 0
+    fi
+    entry=${entries[$((choice - 1))]}
+    num=${entry%%|*}
+
+    echo -e "\n  ${PURPLE}1)${NC} Ponerla primera (siempre)"
+    echo -e "  ${PURPLE}2)${NC} Arrancarla solo la próxima vez (p. ej. entrar a Windows una vez)"
+    read -r -p "📌 Opción: " action
+    case $action in
+        1)
+            local new_order
+            new_order=$(tr ',' '\n' <<< "$order" | grep -vix "$num" | paste -sd, -)
+            new_order="$num${new_order:+,$new_order}"
+            run "No se pudo cambiar el orden" sudo efibootmgr -o "$new_order" \
+                && log_success "Primero: ${entry#*|} (orden: $new_order)"
+            ;;
+        2)
+            run "No se pudo programar el próximo arranque" sudo efibootmgr -n "$num" \
+                && log_success "El próximo arranque será: ${entry#*|}"
+            confirm "${PURPLE}¿Reiniciar ahora?${NC}" && sudo reboot
+            ;;
+        *) echo -e "${YELLOW}ℹ No se cambió nada${NC}" ;;
+    esac
+}
+
+esp_check_repair() {
+    grub_guide_header "🩺 PARTICIÓN EFI"
+    local dev
+    dev=$(findmnt -no SOURCE /boot/efi 2>/dev/null)
+    if [ -z "$dev" ]; then
+        log_warning "No hay partición EFI montada en /boot/efi (¿el equipo arranca en modo BIOS?)"
+        return 0
+    fi
+    echo -e "${PURPLE}💾 Partición EFI: $dev${NC}"
+    df -h /boot/efi | sed 's/^/  /'
+    echo -e "\n${PURPLE}📁 Sistemas registrados en ella:${NC}"
+    sudo ls /boot/efi/EFI 2>/dev/null | sed 's/^/  • /'
+    echo -e "\n${YELLOW}ℹ Windows con 'inicio rápido' o un apagado brusco pueden dañarla y dejar GRUB sin arrancar${NC}\n"
+    confirm "${PURPLE}¿Verificar y reparar la partición EFI? (se desmonta unos segundos)${NC}" || return 0
+
+    command -v fsck.vfat &> /dev/null || { apt_update; apt_install dosfstools || return 1; }
+    run "No se pudo desmontar /boot/efi (¿la está usando otro programa?)" sudo umount /boot/efi || return 1
+    sudo fsck.vfat -a "$dev" 2>&1 | tee -a "$LOG_FILE"
+    local rc=${PIPESTATUS[0]}
+    run "No se pudo volver a montar /boot/efi" sudo mount /boot/efi || return 1
+    # fsck: 0 = sin errores, 1 = errores corregidos, más = quedaron errores
+    case $rc in
+        0) log_success "Partición EFI sin errores" ;;
+        1) log_success "Partición EFI reparada" ;;
+        *) log_error "Quedaron errores en la partición EFI (código $rc). Prueba Boot-Repair (opción 12 → 2)" ;;
+    esac
+}
+
+# ------------------------------------------------------------
+# Herramientas gráficas de arranque
+# ------------------------------------------------------------
+
+# Instala un paquete desde los repositorios o, si no está, desde su PPA
+install_from_repo_or_ppa() {
+    local pkg="$1" ppa="$2"
+    apt_update
+    if [ -z "$(available_pkgs "$pkg")" ]; then
+        echo -e "${PURPLE}📦 Agregando el repositorio $ppa...${NC}"
+        run "No se pudo agregar $ppa" sudo add-apt-repository -y "$ppa" || return 1
+        apt_update force
+        if [ -z "$(available_pkgs "$pkg")" ]; then
+            log_error "$pkg no está disponible para esta versión de Ubuntu"
+            run "No se pudo quitar $ppa" sudo add-apt-repository --remove -y "$ppa"
+            return 1
+        fi
+    fi
+    apt_install_recorded "$pkg"
+}
+
+launch_gui() {
+    echo -e "${PURPLE}🚀 Abriendo $1...${NC}"
+    setsid "$1" >> "$LOG_FILE" 2>&1 < /dev/null &
+}
+
+install_grub_customizer() {
+    echo -e "${YELLOW}ℹ Grub Customizer reemplaza los scripts de /etc/grub.d por los suyos.${NC}"
+    echo -e "${YELLOW}  Para deshacerlo: en Grub Customizer → Archivo → Revertir a la configuración original.${NC}\n"
+    command -v grub-customizer &> /dev/null || install_from_repo_or_ppa grub-customizer ppa:danielrichter2007/grub-customizer || return 1
+    launch_gui grub-customizer
+}
+
+install_boot_repair() {
+    echo -e "${YELLOW}ℹ Boot-Repair repara el arranque (GRUB y EFI) con un clic; sus opciones avanzadas${NC}"
+    echo -e "${YELLOW}  permiten elegir el sistema por defecto y la partición EFI. También funciona desde Live USB.${NC}\n"
+    command -v boot-repair &> /dev/null || install_from_repo_or_ppa boot-repair ppa:yannubuntu/boot-repair || return 1
+    launch_gui boot-repair
+}
+
+install_refind() {
+    if [ ! -d /sys/firmware/efi ]; then
+        log_error "rEFInd solo funciona en equipos UEFI (este arranca en modo BIOS)"
+        return 1
+    fi
+    echo -e "${YELLOW}ℹ rEFInd es otro gestor de arranque: muestra todos los sistemas con íconos y queda primero.${NC}"
+    echo -e "${YELLOW}  GRUB sigue instalado: se puede volver con la opción 10 o quitando rEFInd desde aquí.${NC}"
+    if secure_boot_enabled; then
+        log_warning "Secure Boot está activado: rEFInd puede no arrancar (la UEFI saltará a la siguiente entrada)"
+    fi
+    echo ""
+    confirm "${PURPLE}¿Instalar rEFInd?${NC}" || return 0
+    # Instalarlo en la partición EFI sin preguntar
+    echo "refind refind/install_to_esp boolean true" | sudo debconf-set-selections
+    apt_update
+    apt_install_recorded refind && log_success "rEFInd instalado: se verá al reiniciar"
+}
+
+remove_refind() {
+    if ! installed_pkgs refind | grep -qx refind; then
+        echo -e "  ${GREEN}✓ rEFInd no está instalado${NC}"
+        return 0
+    fi
+    confirm "${PURPLE}¿Quitar rEFInd y volver a arrancar con GRUB?${NC}" || return 0
+    apt_purge refind && forget_installed refind
+    # Su entrada UEFI y sus archivos en la partición EFI no se borran con el paquete
+    local num
+    for num in $(LC_ALL=C efibootmgr 2>/dev/null | sed -n 's/^Boot\([0-9A-Fa-f]\{4\}\)\*\{0,1\} rEFInd.*/\1/p'); do
+        run "No se pudo quitar la entrada UEFI de rEFInd" sudo efibootmgr -b "$num" -B
+    done
+    sudo rm -rf /boot/efi/EFI/refind
+    run_visible "No se pudo reinstalar GRUB" sudo grub-install && log_success "rEFInd quitado: arranca GRUB"
+}
+
+boot_tools_menu() {
+    while true; do
+        grub_guide_header "🧰 HERRAMIENTAS DE ARRANQUE"
+        echo -e "  ${PURPLE}1)${NC} Grub Customizer - Editar el menú: ordenar, renombrar, ocultar, fondo"
+        echo -e "  ${PURPLE}2)${NC} Boot-Repair - Reparación automática de GRUB y EFI"
+        echo -e "  ${PURPLE}3)${NC} rEFInd - Gestor de arranque gráfico con todos los sistemas (UEFI)"
+        echo -e "  ${PURPLE}4)${NC} Quitar rEFInd y volver a GRUB"
+        echo -e "  ${PURPLE}5)${NC} ⬅️ Volver"
+        echo -e "\n${YELLOW}ℹ Grub Customizer y Boot-Repair se pueden desinstalar desde la opción 18 del menú principal${NC}\n"
+        read -r -p "📌 Opción (1-5): " tool_option
+        case $tool_option in
+            1) install_grub_customizer ;;
+            2) install_boot_repair ;;
+            3) install_refind ;;
+            4) remove_refind ;;
+            5) return 0 ;;
+            *) echo -e "${RED}❌ Opción inválida${NC}"; sleep 1; continue ;;
+        esac
+        pause
+    done
 }
 
 # ============================================================
@@ -3290,7 +3599,7 @@ profiles_menu() {
 SCRIPT_PROGRAMS=(filezilla code virtualbox google-chrome-stable telegram-desktop python3-pip
     python3-venv git htop fastfetch timeshift gparted vim discord spotify-client obs-studio
     qrca build-essential alacritty gamemode mangohud tlp tlp-rdw zram-tools corectrl
-    nvidia-cuda-toolkit)
+    nvidia-cuda-toolkit grub-customizer boot-repair refind)
 
 remove_installed_programs() {
     local logged=() known=() entries=() p desc
