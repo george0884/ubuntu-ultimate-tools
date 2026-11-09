@@ -2,11 +2,10 @@
   
 # 🚀 Ubuntu Ultimate Tools
 
-### Transforma tu Kubuntu en un sistema minimalista estilo KDE Neon
+### Limpia, optimiza y repara cualquier sabor de Ubuntu desde un solo menú
 
 [![Licencia](https://img.shields.io/badge/Licencia-GPL%20v3-blue.svg)](LICENSE)
 [![Bash](https://img.shields.io/badge/Shell-Bash-4EAA25?logo=gnu-bash&logoColor=white)](https://www.gnu.org/software/bash/)
-[![KDE Plasma](https://img.shields.io/badge/KDE%20Plasma-6.0+-1D99F3?logo=kde&logoColor=white)](https://kde.org/plasma-desktop/)
 [![Ubuntu](https://img.shields.io/badge/Ubuntu-22.04%2B-E95420?logo=ubuntu&logoColor=white)](https://ubuntu.com/)
 
 </div>
@@ -15,35 +14,42 @@
 
 ## 📖 Descripción
 
-**Ubuntu Ultimate Tools** es un script interactivo que te permite convertir tu instalación de Kubuntu en un sistema minimalista similar a **KDE Neon**. Con una interfaz de menús fácil de usar, puedes:
+**Ubuntu Ultimate Tools** es un script interactivo para dejar tu Ubuntu más liviano, rápido y a tu gusto,
+sin importar el sabor. Al iniciar **detecta qué sabor y qué escritorio tienes** y adapta sus opciones:
 
-- 🗑️ **Eliminar** aplicaciones preinstaladas de Kubuntu
-- ⚙️ **Configurar** el sistema al estilo Neon (backports, sin Snap)
-- 🎨 **Instalar** terminal Alacritty y temas modernos (Tokyo Night)
-- 📦 **Agregar** software opcional popular (VSCode, Chrome, Discord, etc.)
-- ↩️ **Revertir** todos los cambios a la configuración original
-
-> ⚠️ **Nota**: Este script está diseñado para **Kubuntu 22.04 LTS o superior**.
+- 🗑️ **Eliminar** las apps preinstaladas de tu sabor (con un seguro que nunca quita piezas del escritorio)
+- ⚡ **Cambiar de kernel** (Liquorix, XanMod, oficial LTS/HWE) y **reparar o personalizar GRUB**
+- 🎮 **Optimizar** GPU, RAM, red, DNS y energía, o aplicar un **perfil automático** (gaming, productividad...)
+- 📦 **Instalar** software popular y la terminal Alacritty con tema Tokyo Night
+- ↩️ **Deshacer** cualquier cambio o **revertir** a tu sabor original
 
 ---
 
-## ✨ Características
+## 🐧 Sabores compatibles
 
-| Categoría | Funcionalidades |
-|-----------|----------------|
-| **Limpieza** | Eliminación selectiva de +25 apps preinstaladas (juegos, PIM, utilidades) |
-| **Snap** | Eliminación completa del sistema Snap (estilo Neon puro) |
-| **Backports** | Activación de repositorios para Plasma actualizado |
-| **Terminal** | Instalación y configuración de Alacritty con tema Tokyo Night |
-| **Temas** | Instalación de themes visuales modernos para KDE Plasma |
-| **Software** | 19 programas opcionales listos para instalar con un clic |
-| **Revertir** | Restauración completa al estado original de Kubuntu |
+| Sabor | Escritorio | Notas |
+|-------|------------|-------|
+| **Ubuntu** (completo o mínimo) | GNOME | Modo oscuro, dock e indexador de GNOME |
+| **Kubuntu** | KDE Plasma | Tema Tokyo Night, panel de Plasma, Baloo y KDE Rolling Release (backports) |
+| **Xubuntu** | Xfce | |
+| **Lubuntu** | LXQt | |
+| **Ubuntu MATE** | MATE | |
+| **Ubuntu Budgie** | Budgie | |
+| **Ubuntu Cinnamon** | Cinnamon | |
+| **Ubuntu Unity** | Unity | |
+| **Ubuntu Studio** | KDE Plasma | Igual que Kubuntu |
+| **Edubuntu** | GNOME | Igual que Ubuntu |
+| **Ubuntu Kylin** | UKUI | Sin lista propia de apps: solo las comunes |
+| **Ubuntu Server** | sin escritorio | Kernel, GRUB, red, RAM, Snap y actualizaciones |
+
+El sabor se detecta por su meta-paquete (`kubuntu-desktop`, `xubuntu-desktop`...). Si lo quitaste con la
+opción 2, se reconoce por su escritorio. Las opciones que no aplican a tu escritorio lo explican y no hacen nada.
 
 ---
 
 ## 📋 Requisitos
 
-- **Kubuntu** 22.04 LTS o superior
+- **Ubuntu 22.04 LTS o superior**, cualquier sabor
 - Conexión a internet
 - Usuario con privilegios `sudo`
 
@@ -91,14 +97,14 @@ chmod +x ubuntu-ultimate-tools.sh
 
 ```
  1) 🗑️  Eliminar aplicaciones preinstaladas
- 2) ⚙️  Configurar sistema (Rolling Release)
+ 2) ⚙️  Configurar sistema (meta-paquete, manuales y, en KDE, Rolling Release)
  3) 🎮 Optimizar GPU (NVIDIA/AMD/Intel)
  4) ⚡ Optimizar Kernel (Liquorix/XanMod/Estándar)
  5) 💾 Optimizar Memoria RAM (automático)
  6) 🔄 ACTUALIZAR SISTEMA (update/upgrade/clean)
  7) 🖥️  Instalar Alacritty (terminal GPU) y temas
  8) 📦 Instalar software opcional
- 9) ↩️  Revertir a Kubuntu original
+ 9) ↩️  Revertir a tu sabor original
 10) ☢️  ELIMINACION NUCLEAR DE SNAP
 11) 🔄 REINSTALAR SNAP
 12) 🔧 ARRANQUE: reparar y personalizar GRUB/EFI
@@ -131,7 +137,7 @@ o desde la terminal:
 | `gaming` | Drivers recomendados, kernel Liquorix, GameMode + MangoHud, energía al máximo, sin Baloo, Wi-Fi sin ahorro, BBR, DNS |
 | `ahorro` | TLP en portátiles (perfil de ahorro en PC), sin Baloo, ZRAM, RAM, TRIM |
 | `desarrollo` | git, build-essential, Python, VSCode, más vigilancia de archivos para IDEs, RAM, ZRAM, BBR, DNS |
-| `minimalista` | Estilo KDE Neon: sin `kubuntu-desktop` ni apps extra, sin Snap, Firefox .deb de Mozilla, Plasma de backports |
+| `minimalista` | Mínimo: sin el meta-paquete del sabor ni apps extra, sin Snap, Firefox .deb de Mozilla (en KDE, Plasma de backports) |
 
 - Si un paso falla, el perfil sigue con los demás y al final muestra un resumen ✓/✗.
 - Las preguntas internas (por ejemplo, instalar CUDA) se responden "no" automáticamente.
@@ -190,7 +196,7 @@ Para ocultar entradas sueltas, el script desactiva el script de GRUB que las gen
 ejecuta `<script>_ubuntu_ultimate_tools`, que lo llama y quita las entradas de la lista
 `/etc/ubuntu-ultimate-tools/grub-ocultas`. Si una actualización reactiva el original, el filtro se aparta
 (sin entradas duplicadas) hasta que se vuelva a usar la opción. No se pueden ocultar todas las
-entradas de Kubuntu.
+entradas de tu sistema.
 
 Si usaste **Grub Customizer**, la opción 9 → 7 deja `/etc/grub.d` como lo instala Ubuntu: devuelve
 cada script a su nombre, quita sus `*_proxy` (que duplican entradas) y guarda antes una copia
@@ -211,11 +217,11 @@ sesión. Lo más práctico es **guardarlo ahora en un pendrive**, mientras el si
 
 1. Copia `ubuntu-ultimate-tools.sh` a un pendrive (puede ser el mismo del Live USB si tiene una
    partición de datos, o uno aparte).
-2. Ten a mano también un **USB de instalación de Kubuntu** (el Live USB).
+2. Ten a mano también un **USB de instalación de tu sabor de Ubuntu** (el Live USB).
 
 #### Cuando el sistema no arranca
 
-1. Arranca desde el USB de Kubuntu y elige **"Probar Kubuntu"**.
+1. Arranca desde el USB y elige **"Probar Ubuntu"** (o "Probar Kubuntu", "Probar Xubuntu"...).
    Debe arrancar en el mismo modo que el sistema instalado (UEFI o BIOS/Legacy).
 2. Conecta el pendrive con el script. Aparece en el gestor de archivos (Dolphin);
    haz clic en él para montarlo.
@@ -223,13 +229,13 @@ sesión. Lo más práctico es **guardarlo ahora en un pendrive**, mientras el si
    la tecla TAB lo autocompleta):
 
 ```bash
-cd /media/kubuntu/PENDRIVE
+cd /media/$USER/PENDRIVE
 bash ubuntu-ultimate-tools.sh      # opción 12 → 10
 ```
 
 - Se usa `bash ubuntu-ultimate-tools.sh` y no `./ubuntu-ultimate-tools.sh` porque los pendrives FAT32/exFAT
   no guardan el permiso de ejecución.
-- `ls /media/kubuntu/` muestra el nombre exacto del pendrive.
+- `ls /media/$USER/` muestra el nombre exacto del pendrive.
 - Si tienes internet en el Live USB y prefieres no usar pendrive: `sudo apt install gh`,
   `gh auth login` y `git clone` (ver *Instalación*).
 
@@ -251,8 +257,8 @@ disponible, se vuelve a la selección escribiendo números.
   los instalados con versiones anteriores del script aparecen marcados "sin registro".
   Antes de desinstalar avisa si se quitará algo más por dependencias.
 - **Restaurar ajustes del sistema** (RAM, inotify, BBR...) a sus valores de fábrica.
-- **Desactivar ZRAM** y **quitar TLP** (vuelve el selector de energía de Plasma).
-- **Restaurar todos los ajustes** de una vez, sin desinstalar programas. "Revertir a Kubuntu
+- **Desactivar ZRAM** y **quitar TLP** (vuelve el selector de energía del escritorio).
+- **Restaurar todos los ajustes** de una vez, sin desinstalar programas. "Revertir a tu sabor
   original" (opción 9) también lo hace.
 
 ---
@@ -298,7 +304,7 @@ Dentro de la opción 3:
 ↩️ Revertir (opción 9)
 
 - Quita el PPA backports y **baja Plasma a la versión oficial** (quitar el PPA no lo hace solo).
-- Desbloquea Snap y reinstala `kubuntu-desktop` **con todas sus aplicaciones**.
+- Desbloquea Snap y reinstala el meta-paquete de tu sabor **con todas sus aplicaciones**.
 - Reinstala todo lo que el script eliminó (incluidas dependencias); la lista está en
   `~/.local/share/ubuntu-ultimate-tools/paquetes-eliminados.txt`.
 - Restaura los íconos del escritorio y las aplicaciones fijadas del panel quitadas con la opción 14.
@@ -328,17 +334,18 @@ Curl / Wget Transferencias ⌨️ CLI
 
 ---
 
-🗑️ Aplicaciones que puedes eliminar
+🗑️ Aplicaciones que puedes eliminar (opción 1)
 
-El script permite eliminar selectivamente:
+La lista sale de los **meta-paquetes reales de cada sabor**, con dos filtros:
 
-Juegos: KMahjongg, KMines, KPat, KSudoku, KBreakout, KNetwalk
-Multimedia: Dragon Player, Juk, K3b, KTorrent
-PIM/Suite: KMail, Kontact, KOrganizer, KAddressBook, KAlarm
-Utilidades: KWrite, Kate, KRuler, KMag, KCharSelect, KDF, KFind, KGpg
-Internet: Akregator, Konversation, KRDC
-Oficina: LibreOffice (completo)
-Snap: Sistema completo de Snap (Firefox, Store, etc.)
+- **Solo apps**: juegos, oficina, correo, multimedia, cámaras, escáneres, torrents, IRC, utilidades...
+  Nunca se ofrecen las piezas del escritorio: gestor de archivos, configuración del sistema, panel, sesión,
+  gestor de ventanas, red, sonido, Bluetooth, energía, notificaciones, portales o actualizaciones.
+- **Solo las que tienes instaladas**: lista de tu escritorio + apps comunes a todos los Ubuntu.
+
+Y un **seguro de dependencias**: antes de borrar, el script simula qué se llevaría `apt`. Si una app
+arrastraría una pieza esencial (escritorio, sesión, gestor de inicio de sesión, red, sonido...), **no se
+quita** y se explica por qué. Si arrastra otras cosas, se muestran antes de confirmar.
 
 ---
 
@@ -360,7 +367,8 @@ graph LR
 · ✅ No destructivo: Todos los cambios son reversibles
 · ✅ Confirmaciones: Cada acción crítica requiere confirmación
 · ✅ Backports opcional: No se modifica el sistema si no deseas
-· ✅ Revertir completo: Opción para volver a Kubuntu 100% original
+· ✅ Revertir completo: Opción para volver a tu sabor de Ubuntu original
+· ✅ Seguro de dependencias: nunca se quita una app que arrastre piezas esenciales del sistema
 
 ---
 
@@ -388,10 +396,10 @@ Terminal Alacritty con tema Tokyo Night
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
 │  ┌───────────────────────────────────────────────────────────────────┐  │
-│  │  user@kubuntu:~$ fastfetch                                        │  │
+│  │  user@ubuntu:~$ fastfetch                                        │  │
 │  │                                                                   │  │
-│  │       .:///:-.                    user@kubuntu                    │  │
-│  │     .:////////:-.                 OS: Kubuntu 24.04               │  │
+│  │       .:///:-.                    user@ubuntu                    │  │
+│  │     .:////////:-.                 OS: Ubuntu 24.04                │  │
 │  │    -////////////////:.            Kernel: 6.8.0-xx               │  │
 │  │   `:////////////////:.            Shell: bash 5.2.15              │  │
 │  │    :+///////////////+`            DE: KDE Plasma 6.0.4            │  │
@@ -406,9 +414,11 @@ Terminal Alacritty con tema Tokyo Night
 
 ❓ Preguntas Frecuentes
 
-¿Puedo usar esto en Ubuntu normal con KDE instalado manualmente?
+¿Funciona en mi sabor de Ubuntu?
 
-No está recomendado. El script está diseñado específicamente para Kubuntu de fábrica.
+Sí: Ubuntu, Kubuntu, Xubuntu, Lubuntu, MATE, Budgie, Cinnamon, Unity, Studio, Edubuntu, Kylin y Server.
+El banner muestra qué sabor y escritorio detectó. En distribuciones basadas en Ubuntu (Mint, Pop!_OS...)
+no está probado.
 
 ¿Qué pasa si elimino Snap?
 
@@ -416,7 +426,12 @@ Firefox y la tienda Snap se eliminarán. En Ubuntu `apt install firefox` solo in
 
 ¿Cómo vuelvo atrás?
 
-Usa la Opción 9 del menú principal. Reinstalará kubuntu-desktop y restaurará Snap.
+Usa la Opción 9 del menú principal. Reinstalará el meta-paquete de tu sabor con todas sus apps y restaurará Snap.
+
+¿Usaba la versión anterior, "Kubuntu Lite"?
+
+No hace falta hacer nada: la primera vez que ejecutes `ubuntu-ultimate-tools.sh`, pasa sola tu configuración
+(entradas ocultas de GRUB, programas instalados, ajustes de RAM, DNS, etc.) a los nombres nuevos.
 
 ¿Necesito reinstalar después de ejecutar el script?
 

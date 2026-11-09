@@ -2,7 +2,7 @@
 
 # ============================================================
 # Script: Ubuntu Ultimate Tools
-# Descripción: Transforma Kubuntu en un sistema minimalista
+# Descripción: Transforma cualquier sabor de Ubuntu en un sistema minimalista
 #              con optimizaciones de rendimiento extremo
 # Versión: 7.0 - MENÚS UNIFORMES Y ESTÉTICA CUIDADA
 # Autor: Old The One Deluxe (@george0884)
@@ -60,6 +60,7 @@ print_header() {
     echo "║              Transformación y Optimización Extrema               ║"
     echo "╚══════════════════════════════════════════════════════════════════╝"
     echo -e "${NC}"
+    echo -e "${GREEN}🐧 Detectado: ${FLAVOR_NAME} $(os_release_value VERSION_ID) · ${DESKTOP_NAME}${NC}"
     echo -e "${YELLOW}📁 Log activo: $LOG_FILE${NC}\n"
 }
 
@@ -194,9 +195,10 @@ purge_and_record() {
     fi
 }
 
-# Dependencias y recomendaciones de kubuntu-desktop (las apps originales de Kubuntu)
-kubuntu_desktop_pkgs() {
-    apt-cache depends kubuntu-desktop 2>/dev/null \
+# Dependencias y recomendaciones del meta-paquete del sabor (las apps originales)
+flavor_meta_pkgs() {
+    [ -n "$FLAVOR_META" ] || return 0
+    apt-cache depends "$FLAVOR_META" 2>/dev/null \
         | awk '$1 ~ /^\|?(Depends|Recommends):$/ && $2 !~ /^</ {print $2}' | sort -u
 }
 
@@ -295,6 +297,340 @@ checklist_select() {
 }
 
 # ============================================================
+# SABOR DE UBUNTU Y ESCRITORIO
+# ============================================================
+
+FLAVOR=""          # kubuntu, ubuntu, xubuntu, lubuntu, mate, budgie, cinnamon, unity, studio, edubuntu, kylin, server
+FLAVOR_NAME=""     # Nombre para mostrar (Kubuntu, Xubuntu...)
+FLAVOR_META=""     # Meta-paquete del sabor (kubuntu-desktop...)
+DESKTOP=""         # kde, gnome, xfce, lxqt, mate, budgie, cinnamon, unity, ukui, none
+DESKTOP_NAME=""    # Nombre del escritorio para mostrar
+
+# sabor|nombre|meta-paquete|escritorio|nombre del escritorio|paquete que lo identifica si ya no está el meta-paquete
+# El orden importa: Ubuntu Studio y Edubuntu instalan también otros meta-paquetes.
+FLAVORS=(
+    "studio|Ubuntu Studio|ubuntustudio-desktop|kde|KDE Plasma|ubuntustudio-default-settings"
+    "edubuntu|Edubuntu|edubuntu-desktop|gnome|GNOME|edubuntu-default-settings"
+    "kubuntu|Kubuntu|kubuntu-desktop|kde|KDE Plasma|plasma-workspace"
+    "xubuntu|Xubuntu|xubuntu-desktop|xfce|Xfce|xfce4-session"
+    "lubuntu|Lubuntu|lubuntu-desktop|lxqt|LXQt|lxqt-session"
+    "mate|Ubuntu MATE|ubuntu-mate-desktop|mate|MATE|mate-session-manager"
+    "budgie|Ubuntu Budgie|ubuntu-budgie-desktop|budgie|Budgie|budgie-desktop"
+    "cinnamon|Ubuntu Cinnamon|ubuntucinnamon-desktop|cinnamon|Cinnamon|cinnamon"
+    "unity|Ubuntu Unity|ubuntu-unity-desktop|unity|Unity|unity"
+    "kylin|Ubuntu Kylin|ubuntukylin-desktop|ukui|UKUI|ukui-session-manager"
+    "ubuntu|Ubuntu|ubuntu-desktop|gnome|GNOME|gnome-shell"
+    "ubuntu|Ubuntu|ubuntu-desktop-minimal|gnome|GNOME|gnome-shell"
+)
+
+# Detecta el sabor por su meta-paquete o, si se quitó (opción 2), por su escritorio
+detect_flavor() {
+    local entry meta marker found=""
+    for entry in "${FLAVORS[@]}"; do
+        IFS='|' read -r _ _ meta _ _ marker <<< "$entry"
+        if installed_pkgs "$meta" | grep -qx -- "$meta"; then found=$entry; break; fi
+    done
+    if [ -z "$found" ]; then
+        for entry in "${FLAVORS[@]}"; do
+            IFS='|' read -r _ _ _ _ _ marker <<< "$entry"
+            if installed_pkgs "$marker" | grep -qx -- "$marker"; then found=$entry; break; fi
+        done
+    fi
+    if [ -n "$found" ]; then
+        IFS='|' read -r FLAVOR FLAVOR_NAME FLAVOR_META DESKTOP DESKTOP_NAME _ <<< "$found"
+    else
+        FLAVOR=server FLAVOR_NAME="Ubuntu Server" FLAVOR_META="" DESKTOP=none DESKTOP_NAME="sin escritorio"
+    fi
+}
+
+has_desktop() { [ "$FLAVOR" != server ]; }
+
+# Aviso para las opciones que dependen de un escritorio concreto
+desktop_only() {
+    local needed="$1" what="$2"
+    [[ " $needed " == *" $DESKTOP "* ]] && return 0
+    log_warning "$what no está disponible en $FLAVOR_NAME ($DESKTOP_NAME)"
+    return 1
+}
+
+# ------------------------------------------------------------
+# Apps que se pueden eliminar. Salen de los meta-paquetes de cada sabor,
+# SIN las piezas del escritorio (gestor de archivos, configuración, panel,
+# sesión, ventanas, red, sonido, energía, notificaciones, portales...).
+# Solo se muestran las que están instaladas.
+# ------------------------------------------------------------
+
+# Comunes a varios sabores
+APPS_COMMON=(
+    "libreoffice-core|📄 LibreOffice completo (quita todas sus apps)"
+    "libreoffice-writer|📝 LibreOffice Writer (textos)"
+    "libreoffice-calc|📊 LibreOffice Calc (hojas de cálculo)"
+    "libreoffice-impress|📽️ LibreOffice Impress (presentaciones)"
+    "libreoffice-draw|✏️ LibreOffice Draw (dibujo)"
+    "libreoffice-math|➗ LibreOffice Math (fórmulas)"
+    "thunderbird|📧 Thunderbird (correo)"
+    "evolution|📧 Evolution (correo y calendario)"
+    "geary|📧 Geary (correo)"
+    "transmission-gtk|📥 Transmission (torrent)"
+    "transmission-qt|📥 Transmission (torrent)"
+    "ktorrent|📥 KTorrent (torrent)"
+    "rhythmbox|🎵 Rhythmbox (música)"
+    "lollypop|🎵 Lollypop (música)"
+    "gnome-music|🎵 Música de GNOME"
+    "elisa|🎵 Elisa (música)"
+    "juk|🎵 JuK (música)"
+    "cantata|🎵 Cantata (música MPD)"
+    "goodvibes|📻 Goodvibes (radio por internet)"
+    "gpodder|🎙️ gPodder (podcasts)"
+    "totem|🎬 Vídeos de GNOME (Totem)"
+    "showtime|🎬 Showtime (vídeos)"
+    "celluloid|🎬 Celluloid (vídeos)"
+    "parole|🎬 Parole (vídeos)"
+    "vlc|🎬 VLC (multimedia)"
+    "haruna|🎬 Haruna (vídeos)"
+    "dragonplayer|🎬 Dragon Player (vídeos)"
+    "mpv|🎬 mpv (multimedia ligero)"
+    "shotwell|🖼️ Shotwell (fotos)"
+    "gthumb|🖼️ gThumb (imágenes)"
+    "gimp|🎨 GIMP (editor de imágenes)"
+    "drawing|🎨 Drawing (dibujo simple)"
+    "kolourpaint|🎨 KolourPaint (dibujo simple)"
+    "cheese|📷 Cheese (cámara web)"
+    "gnome-snapshot|📷 Cámara de GNOME"
+    "guvcview|📷 guvcview (cámara web)"
+    "webcamoid|📷 Webcamoid (cámara web)"
+    "kamoso|📷 Kamoso (cámara web)"
+    "remmina|🖥️ Remmina (escritorio remoto)"
+    "krdc|🖥️ KRDC (escritorio remoto)"
+    "vino|🖥️ Vino (compartir el escritorio por VNC)"
+    "simple-scan|🖨️ Escáner de documentos"
+    "skanlite|🖨️ Skanlite (escáner)"
+    "skanpage|🖨️ Skanpage (escáner multipágina)"
+    "deja-dup|💾 Déjà Dup (copias de seguridad)"
+    "baobab|💾 Analizador de uso del disco"
+    "gnome-disk-utility|💾 Discos (formatear y crear imágenes)"
+    "partitionmanager|💾 Gestor de particiones de KDE"
+    "gdebi|📦 GDebi (instalar paquetes .deb)"
+    "synaptic|📦 Synaptic (gestor de paquetes)"
+    "usb-creator-gtk|💿 Crear un USB de arranque"
+    "usb-creator-kde|💿 Crear un USB de arranque"
+    "k3b|💿 K3b (grabar CD/DVD)"
+    "xfburn|💿 Xfburn (grabar CD/DVD)"
+    "hexchat|💬 HexChat (IRC)"
+    "quassel|💬 Quassel (IRC)"
+    "konversation|💬 Konversation (IRC)"
+    "neochat|💬 NeoChat (chat Matrix)"
+    "onboard|⌨️ Onboard (teclado en pantalla)"
+    "magnus|🔍 Magnus (lupa de pantalla)"
+    "kmag|🔍 KMag (lupa de pantalla)"
+    "gucharmap|🔣 Mapa de caracteres"
+    "gnome-characters|🔣 Caracteres de GNOME"
+    "kcharselect|🔣 Mapa de caracteres de KDE"
+    "gnome-font-viewer|🔤 Visor de tipografías"
+    "font-manager|🔤 Gestor de tipografías"
+    "gnome-calendar|📆 Calendario de GNOME"
+    "gnome-clocks|⏰ Relojes de GNOME"
+    "gnome-weather|🌤️ Tiempo de GNOME"
+    "gnome-maps|🗺️ Mapas de GNOME"
+    "gnome-contacts|📇 Contactos de GNOME"
+    "gnome-dictionary|📖 Diccionario de GNOME"
+    "endeavour|✅ Endeavour (tareas)"
+    "gnome-logs|📋 Registros del sistema (GNOME)"
+    "ksystemlog|📋 Registros del sistema (KDE)"
+    "yelp|❓ Ayuda de GNOME"
+    "khelpcenter|❓ Centro de ayuda de KDE"
+    "apport-gtk|🐞 Reporte de errores de Ubuntu"
+    "apport-kde|🐞 Reporte de errores de Ubuntu"
+    "seahorse|🔐 Contraseñas y claves (Seahorse)"
+    "htop|📊 htop (monitor en la terminal)"
+    "stacer|📊 Stacer (optimizador y monitor)"
+    "git-cola|🧰 git-cola (interfaz gráfica de Git)"
+    "xterm|💻 XTerm (terminal básica adicional)"
+    "tilda|💻 Tilda (terminal desplegable)"
+    "catfish|🔎 Catfish (buscador de archivos)"
+    "kfind|🔎 KFind (buscador de archivos)"
+    "gigolo|🌐 Gigolo (carpetas remotas)"
+    "mugshot|👤 Mugshot (datos del usuario)"
+    "xfce4-dict|📖 Diccionario de Xfce"
+    "convertall|📐 ConvertAll (conversor de unidades)"
+    "aisleriot|🃏 Solitarios (AisleRiot)"
+    "gnome-mines|💣 Buscaminas de GNOME"
+    "gnome-sudoku|🔢 Sudoku de GNOME"
+    "gnome-mahjongg|🀄 Mahjongg de GNOME"
+    "gnome-2048|🎲 2048 de GNOME"
+    "gnome-chess|♟️ Ajedrez de GNOME"
+    "sgt-launcher|🧩 Rompecabezas de Simon Tatham"
+    "2048-qt|🎲 2048"
+    "kmahjongg|🀄 Mahjongg de KDE"
+    "kmines|💣 Buscaminas de KDE"
+    "kpat|🃏 Solitarios de KDE"
+    "ksudoku|🔢 Sudoku de KDE"
+)
+
+# Por escritorio
+# shellcheck disable=SC2034  # se usa por referencia en flavor_app_list
+APPS_KDE=(
+    "akregator|📰 Akregator (lector RSS)"
+    "kaddressbook|📇 KAddressBook (contactos)"
+    "kalarm|⏰ KAlarm (alarmas y recordatorios)"
+    "kate|📝 Kate (editor de texto avanzado)"
+    "kwrite|📝 KWrite (editor de texto)"
+    "kmail|📧 KMail (correo)"
+    "knotes|📋 KNotes (notas adhesivas)"
+    "kontact|📅 Kontact (suite de correo, agenda y contactos)"
+    "korganizer|📆 KOrganizer (calendario)"
+    "kmouth|🗣️ KMouth (sintetizador de voz)"
+    "kdf|💾 KDiskFree (uso de disco)"
+    "kgpg|🔐 KGpg (claves GPG)"
+    "kdeconnect|📱 KDE Connect (sincronizar con el móvil)"
+    "kdenlive|🎬 Kdenlive (editor de vídeo)"
+    "kompare|📊 Kompare (comparar archivos)"
+    "kremotecontrol|🎮 Control remoto"
+    "kruler|📏 KRuler (regla en pantalla)"
+    "kteatime|🍵 KTeaTime (temporizador para el té)"
+    "ktimer|⏱️ KTimer (temporizador)"
+    "kwalletmanager|👛 Gestor de la cartera de contraseñas (la cartera sigue funcionando)"
+    "kcalc|🧮 KCalc (calculadora)"
+    "ark|🗜️ Ark (archivos comprimidos)"
+    "okular|📖 Okular (visor de PDF)"
+    "gwenview|🖼️ Gwenview (visor de imágenes)"
+    "kde-spectacle|📸 Spectacle (capturas de pantalla)"
+    "spectacle|📸 Spectacle (capturas de pantalla)"
+    "plasma-systemmonitor|📊 Monitor del sistema"
+    "kinfocenter|ℹ️ Centro de información"
+    "qapt-deb-installer|📦 Instalador de paquetes .deb"
+    "plasma-discover|🛒 Discover (tienda de aplicaciones)"
+    "plasma-welcome|👋 Bienvenida de Plasma"
+    "kubuntu-docs|📚 Documentación de Kubuntu"
+    "kubuntu-web-shortcuts|🌐 Accesos web de Kubuntu"
+    "kio-extras|⚠️ Protocolos KIO extra (miniaturas, móvil y red en Dolphin)"
+    "kscreen|⚠️ Configuración de pantallas (sin ella no podrás cambiar la resolución)"
+    "konsole|⚠️ Konsole (terminal: quítala solo si usas otra, como Alacritty)"
+)
+# shellcheck disable=SC2034  # se usa por referencia en flavor_app_list
+APPS_GNOME=(
+    "eog|🖼️ Visor de imágenes (Eye of GNOME)"
+    "loupe|🖼️ Visor de imágenes (Loupe)"
+    "evince|📖 Visor de documentos PDF"
+    "papers|📖 Visor de documentos (Papers)"
+    "gnome-text-editor|📝 Editor de texto"
+    "gnome-calculator|🧮 Calculadora"
+    "gnome-system-monitor|📊 Monitor del sistema"
+    "file-roller|🗜️ Archivos comprimidos"
+    "gnome-power-manager|🔋 Estadísticas de energía"
+    "gnome-bluetooth-sendto|📶 Enviar archivos por Bluetooth"
+    "gnome-shell-extension-manager|🧩 Gestor de extensiones"
+    "gnome-browser-connector|🧩 Extensiones de GNOME desde el navegador"
+)
+# shellcheck disable=SC2034  # se usa por referencia en flavor_app_list
+APPS_XFCE=(
+    "mousepad|📝 Mousepad (editor de texto)"
+    "ristretto|🖼️ Ristretto (visor de imágenes)"
+    "atril|📖 Atril (visor de PDF)"
+    "engrampa|🗜️ Engrampa (archivos comprimidos)"
+    "mate-calc|🧮 Calculadora"
+    "xfce4-screenshooter|📸 Capturas de pantalla"
+    "xfce4-taskmanager|📊 Administrador de tareas"
+    "menulibre|🗂️ Editor del menú"
+)
+# shellcheck disable=SC2034  # se usa por referencia en flavor_app_list
+APPS_LXQT=(
+    "featherpad|📝 FeatherPad (editor de texto)"
+    "kcalc|🧮 KCalc (calculadora)"
+    "okular|📖 Okular (visor de PDF)"
+    "noblenote|📋 NobleNote (notas)"
+    "qps|📊 Qps (monitor de procesos)"
+    "qtpass|🔐 QtPass (contraseñas)"
+    "screengrab|📸 ScreenGrab (capturas de pantalla)"
+    "qlipper|📋 Qlipper (historial del portapapeles)"
+    "redshift-qt|🌙 Redshift (luz nocturna)"
+    "lxqt-archiver|🗜️ Archivos comprimidos"
+)
+# shellcheck disable=SC2034  # se usa por referencia en flavor_app_list
+APPS_MATE=(
+    "atril|📖 Atril (visor de PDF)"
+    "eom|🖼️ Eye of MATE (visor de imágenes)"
+    "pluma|📝 Pluma (editor de texto)"
+    "mate-calc|🧮 Calculadora"
+    "engrampa|🗜️ Engrampa (archivos comprimidos)"
+    "mate-system-monitor|📊 Monitor del sistema"
+    "mate-utils|🧰 Utilidades de MATE (capturas, diccionario, búsqueda)"
+    "mate-user-guide|❓ Guía de MATE"
+    "ubuntu-mate-guide|❓ Guía de Ubuntu MATE"
+    "gufw|🛡️ Gufw (cortafuegos gráfico)"
+    "redshift-gtk|🌙 Redshift (luz nocturna)"
+)
+# shellcheck disable=SC2034  # se usa por referencia en flavor_app_list
+APPS_BUDGIE=(
+    "gedit|📝 Gedit (editor de texto)"
+    "atril|📖 Atril (visor de PDF)"
+    "mate-calc|🧮 Calculadora"
+    "mate-system-monitor|📊 Monitor del sistema"
+)
+# shellcheck disable=SC2034  # se usa por referencia en flavor_app_list
+APPS_CINNAMON=(
+    "gedit|📝 Gedit (editor de texto)"
+    "evince|📖 Visor de documentos PDF"
+    "file-roller|🗜️ Archivos comprimidos"
+    "gnome-calculator|🧮 Calculadora"
+    "gnome-system-monitor|📊 Monitor del sistema"
+    "gnome-screenshot|📸 Capturas de pantalla"
+    "gnome-software|🛒 Centro de software"
+    "gnome-power-manager|🔋 Estadísticas de energía"
+)
+# shellcheck disable=SC2034  # se usa por referencia en flavor_app_list
+APPS_UNITY=(
+    "pluma|📝 Pluma (editor de texto)"
+    "eom|🖼️ Eye of MATE (visor de imágenes)"
+    "atril|📖 Atril (visor de PDF)"
+    "file-roller|🗜️ Archivos comprimidos"
+    "mate-calc|🧮 Calculadora"
+    "mate-system-monitor|📊 Monitor del sistema"
+    "gnome-screenshot|📸 Capturas de pantalla"
+    "activity-log-manager|🕵️ Registro de actividad (privacidad)"
+)
+
+# Apps del sabor actual + comunes, sin repetir paquetes
+flavor_app_list() {
+    local -n desk_list
+    case $DESKTOP in
+        kde) desk_list=APPS_KDE ;;
+        gnome) desk_list=APPS_GNOME ;;
+        xfce) desk_list=APPS_XFCE ;;
+        lxqt) desk_list=APPS_LXQT ;;
+        mate) desk_list=APPS_MATE ;;
+        budgie) desk_list=APPS_BUDGIE ;;
+        cinnamon) desk_list=APPS_CINNAMON ;;
+        unity) desk_list=APPS_UNITY ;;
+        *) printf '%s\n' "${APPS_COMMON[@]}"; return 0 ;;
+    esac
+    printf '%s\n' "${desk_list[@]}" "${APPS_COMMON[@]}" | awk -F'|' '!seen[$1]++'
+}
+
+# Juegos (perfil productividad) y extras que sobran en un sistema mínimo (perfil minimalista).
+# Solo se quitan los que estén instalados.
+GAME_PKGS=(aisleriot gnome-mines gnome-sudoku gnome-mahjongg gnome-2048 gnome-chess sgt-launcher
+    2048-qt kmahjongg kmines kpat ksudoku)
+MINIMAL_PKGS=("${GAME_PKGS[@]}" kmail kontact korganizer kaddressbook kalarm knotes akregator
+    konversation hexchat quassel neochat ktorrent transmission-gtk transmission-qt k3b xfburn
+    dragonplayer juk kmouth kteatime ktimer mugshot plasma-welcome kubuntu-docs kubuntu-web-shortcuts
+    mate-user-guide ubuntu-mate-guide goodvibes gpodder)
+
+remove_games() { remove_apps_with_progress "${GAME_PKGS[@]}"; }
+remove_minimal_extras() { remove_apps_with_progress "${MINIMAL_PKGS[@]}"; }
+
+# Piezas sin las que el escritorio o el sistema dejan de funcionar: si quitar una app
+# las arrastraría por dependencias, esa app no se quita
+CORE_PKGS=(plasma-desktop plasma-workspace kwin-x11 kwin-wayland systemsettings dolphin sddm
+    gnome-shell gnome-session mutter nautilus gnome-control-center gdm3
+    xfce4-session xfce4-panel xfwm4 xfdesktop4 thunar lightdm
+    lxqt-session lxqt-panel openbox pcmanfm-qt
+    mate-session-manager mate-panel marco caja
+    budgie-desktop nemo cinnamon cinnamon-session unity unity-session ukui-session-manager
+    network-manager pipewire wireplumber pulseaudio xorg xserver-xorg-core xwayland
+    sudo systemd policykit-1 polkitd ubuntu-minimal ubuntu-standard grub-common linux-generic)
+
+# ============================================================
 # OPCIÓN 1: ELIMINAR APLICACIONES (COLOR: CIAN)
 # ============================================================
 
@@ -306,62 +642,9 @@ select_apps_to_remove() {
     echo "╚══════════════════════════════════════════════════════════════════╝"
     echo -e "${NC}"
 
-    local apps=(
-        "akregator|📰 Lector RSS y feeds"
-        "cantata|🎵 Cliente de música MPD"
-        "dragonplayer|🎬 Reproductor de video"
-        "juk|🎵 Reproductor de audio"
-        "k3b|💿 Grabador de CDs y DVDs"
-        "kaddressbook|📇 Agenda de contactos"
-        "kalarm|⏰ Alarmas y recordatorios"
-        "kate|📝 Editor de texto avanzado"
-        "kmag|🔍 Lupa de pantalla"
-        "kmail|📧 Cliente de correo electrónico"
-        "kmahjongg|🀄 Juego de Mahjongg"
-        "kmines|💣 Juego de buscaminas"
-        "knotes|📋 Notas adhesivas"
-        "konsole|💻 Terminal"
-        "kontact|📅 Suite PIM completa"
-        "konversation|💬 Cliente IRC"
-        "korganizer|📆 Calendario"
-        "kpat|🃏 Juego de cartas solitario"
-        "krdc|🖥️ Cliente de escritorio remoto"
-        "kruler|📏 Regla en pantalla"
-        "ksudoku|🔢 Juego de Sudoku"
-        "ktorrent|📥 Cliente Torrent"
-        "libreoffice-core|📄 Suite ofimática"
-        "skanlite|🖨️ Escáner"
-        "kmouth|🗣️ Sintetizador de voz"
-        "kcharselect|🔣 Mapa de caracteres"
-        "kdf|💾 Visor de uso de disco"
-        "kfind|🔎 Buscador de archivos"
-        "kgpg|🔐 Gestión de claves GPG"
-        "kamoso|📷 Cámara web"
-        "kdeconnect|📱 Sincronización con móvil"
-        "kdenlive|🎬 Editor de video"
-        "khelpcenter|❓ Centro de ayuda"
-        "kio-extras|🔌 Protocolos extra KIO"
-        "kmix|🔊 Control de volumen"
-        "kolourpaint|🎨 Pintura simple"
-        "kompare|📊 Comparador de archivos"
-        "kremotecontrol|🎮 Control remoto"
-        "kscreen|🖥️ Configuración de pantallas"
-        "ksystemlog|📋 Visor de logs del sistema"
-        "kteatime|🍵 Temporizador para té"
-        "ktimer|⏱️ Temporizador"
-        "kwalletmanager|👛 Gestión de contraseñas"
-        "okular|📖 Visor de PDF/DjVu"
-        "spectacle|📸 Capturas de pantalla"
-        "gwenview|🖼️ Visor de imágenes"
-        "mpv|🎬 Reproductor multimedia ligero"
-        "remmina|🖥️ Cliente de escritorio remoto"
-        "plasma-discover|🛒 Tienda de aplicaciones"
-        "plasma-welcome|👋 Guía de bienvenida"
-        "kubuntu-docs|📚 Documentación de Kubuntu"
-        "kubuntu-web-shortcuts|🌐 Accesos web de Kubuntu"
-        "qml-module-org-kde-kirigami2|🎨 Componentes Kirigami"
-        "qml-module-qtquick-controls2|🎛️ Controles QtQuick"
-    )
+    echo -e "${CYAN}🖥️ Apps de ${FLAVOR_NAME} (${DESKTOP_NAME}) y comunes a todos los Ubuntu${NC}\n"
+    local apps=()
+    mapfile -t apps < <(flavor_app_list)
 
     # Solo se ofrecen las que están instaladas
     local installed=() entries=() app
@@ -407,21 +690,23 @@ select_apps_to_remove() {
 # OPCIÓN 2: CONFIGURAR SISTEMA (COLOR: VERDE)
 # ============================================================
 
-remove_kubuntu_meta() {
-    if ! installed_pkgs kubuntu-desktop | grep -qx kubuntu-desktop; then
-        echo -e "  ${YELLOW}ℹ kubuntu-desktop ya no está instalado${NC}"
+remove_flavor_meta() {
+    if [ -z "$FLAVOR_META" ] || ! installed_pkgs "$FLAVOR_META" | grep -qx -- "$FLAVOR_META"; then
+        echo -e "  ${YELLOW}ℹ El meta-paquete de ${FLAVOR_NAME} ya no está instalado${NC}"
         return 0
     fi
     # Sin el meta-paquete, sus apps quedan "huérfanas" y 'apt autoremove' (opción 6)
     # las borraría. Se marcan como instaladas manualmente para conservarlas.
     local kd_pkgs
     # shellcheck disable=SC2046  # listas de paquetes: se separan a propósito
-    mapfile -t kd_pkgs < <(installed_pkgs $(kubuntu_desktop_pkgs))
-    [ ${#kd_pkgs[@]} -gt 0 ] && run "No se pudieron proteger las apps de Kubuntu" sudo apt-mark manual "${kd_pkgs[@]}"
-    purge_and_record kubuntu-desktop && log_success "Se eliminó kubuntu-desktop (las apps se conservan)"
+    mapfile -t kd_pkgs < <(installed_pkgs $(flavor_meta_pkgs))
+    [ ${#kd_pkgs[@]} -gt 0 ] && run "No se pudieron proteger las apps de ${FLAVOR_NAME}" sudo apt-mark manual "${kd_pkgs[@]}"
+    purge_and_record "$FLAVOR_META" && log_success "Se eliminó $FLAVOR_META (las apps se conservan)"
 }
 
 enable_backports() {
+    # El PPA de backports es de Kubuntu: en los demás sabores no existe
+    desktop_only kde "KDE Rolling Release (backports)" || return 0
     if grep -rqs 'kubuntu-ppa/backports' /etc/apt/sources.list /etc/apt/sources.list.d/; then
         echo -e "  ${GREEN}✓ KDE Rolling Release (backports) ya está activo${NC}"
         return 0
@@ -451,16 +736,21 @@ configure_system() {
     echo "╚══════════════════════════════════════════════════════════════════╝"
     echo -e "${NC}"
 
-    echo -e "\n${GREEN}1. Meta-paquete kubuntu-desktop${NC}"
-    echo -e "   ${GREEN}📝 Descripción:${NC} Es el paquete que agrupa todas las apps de Kubuntu"
+    if [ -z "$FLAVOR_META" ]; then
+        echo -e "\n${YELLOW}ℹ ${FLAVOR_NAME}: no hay meta-paquete de escritorio${NC}"
+    else
+    echo -e "\n${GREEN}1. Meta-paquete ${FLAVOR_META}${NC}"
+    echo -e "   ${GREEN}📝 Descripción:${NC} Es el paquete que agrupa todas las apps de ${FLAVOR_NAME}"
     echo -e "   ${GREEN}✓ Si lo eliminas:${NC} Podrás desinstalar apps sin que se reinstalen"
     echo ""
-    if confirm "${GREEN}¿Eliminar kubuntu-desktop? (recomendado)${NC}"; then
-        remove_kubuntu_meta
+    if confirm "${GREEN}¿Eliminar ${FLAVOR_META}? (recomendado)${NC}"; then
+        remove_flavor_meta
     else
-        echo -e "${YELLOW}ℹ Se mantiene kubuntu-desktop${NC}"
+        echo -e "${YELLOW}ℹ Se mantiene ${FLAVOR_META}${NC}"
+    fi
     fi
 
+    if [ "$DESKTOP" = kde ]; then
     echo ""
     echo -e "${GREEN}2. Cambio a KDE Rolling Release${NC}"
     echo -e "   ${GREEN}📝 Descripción:${NC} Cambia los repositorios a versión Rolling Release"
@@ -470,6 +760,7 @@ configure_system() {
         enable_backports
     else
         echo -e "${YELLOW}ℹ Se mantienen repositorios estándar${NC}"
+    fi
     fi
 
     echo ""
@@ -1444,7 +1735,23 @@ install_tokyo_night_theme() {
     echo -e "${CYAN}ℹ Para volver a los colores originales: Preferencias del sistema → Colores → Breeze${NC}"
 }
 
+# Modo oscuro de GNOME: estilo oscuro y, con el tema Yaru de Ubuntu, su variante oscura
+gnome_dark_mode() {
+    local theme
+    run "No se pudo activar el modo oscuro" gsettings set org.gnome.desktop.interface color-scheme prefer-dark || return 1
+    theme=$(gsettings get org.gnome.desktop.interface gtk-theme 2>/dev/null | tr -d "'")
+    if [[ "$theme" == Yaru* && "$theme" != *-dark ]]; then
+        gsettings set org.gnome.desktop.interface gtk-theme "${theme}-dark"
+    fi
+    log_success "Modo oscuro de GNOME activado"
+}
+
 install_custom_software() {
+    if ! has_desktop; then
+        log_warning "Alacritty y los temas necesitan un escritorio (este sistema no tiene)"
+        pause
+        return 0
+    fi
     clear
     echo -e "${CYAN}${BOLD}"
     echo "╔══════════════════════════════════════════════════════════════════╗"
@@ -1482,9 +1789,19 @@ EOF
         echo -e "${GREEN}✓ Alacritty instalado (usando GPU para renderizado)${NC}"
     fi
 
-    if confirm "${CYAN}¿Aplicar tema Tokyo Night a Plasma y Konsole?${NC}"; then
-        install_tokyo_night_theme
-    fi
+    case $DESKTOP in
+        kde)
+            if confirm "${CYAN}¿Aplicar tema Tokyo Night a Plasma y Konsole?${NC}"; then
+                install_tokyo_night_theme
+            fi ;;
+        gnome)
+            if confirm "${CYAN}¿Activar el modo oscuro de GNOME?${NC}"; then
+                gnome_dark_mode
+            fi ;;
+        *)
+            echo -e "${CYAN}ℹ El tema del escritorio solo se aplica en KDE Plasma (Tokyo Night) y GNOME (modo oscuro).${NC}"
+            echo -e "${CYAN}  Alacritty ya usa los colores Tokyo Night.${NC}" ;;
+    esac
 
     pause
 }
@@ -1571,15 +1888,48 @@ select_optional_software() {
 
 # Elimina todas las apps en una sola operación de apt (mucho más rápido que una a una:
 # dpkg ejecuta sus tareas posteriores una sola vez). Si falla, reintenta de a una.
+# Seguro: qué piezas esenciales (CORE_PKGS) arrastraría quitar estos paquetes
+core_pkgs_removed_by() {
+    LC_ALL=C apt-get -s purge "$@" 2>/dev/null | awk '/^(Purg|Remv) / {print $2}' \
+        | grep -xF -f <(printf '%s\n' "${CORE_PKGS[@]}")
+}
+
 remove_apps_with_progress() {
-    local installed=() app
+    local installed=() safe=() app core extra=()
 
     echo ""
     echo -e "${CYAN}══════════════════════════════════════════════════════════════════${NC}"
     mapfile -t installed < <(installed_pkgs "$@")
-    for app in "$@"; do
-        printf '%s\n' "${installed[@]}" | grep -qx -- "$app" || echo -e "  ${YELLOW}⚠ No instalado: $app${NC}"
+    if ! $AUTO_MODE; then
+        for app in "$@"; do
+            printf '%s\n' "${installed[@]}" | grep -qx -- "$app" || echo -e "  ${YELLOW}⚠ No instalado: $app${NC}"
+        done
+    fi
+
+    # Ninguna app se quita si arrastra el escritorio, la sesión, la red, el sonido...
+    for app in "${installed[@]}"; do
+        core=$(core_pkgs_removed_by "$app" | tr '\n' ' ')
+        if [ -n "$core" ]; then
+            echo -e "  ${RED}🛡 No se quita $app: arrastraría piezas esenciales del sistema (${core% })${NC}"
+        else
+            safe+=("$app")
+        fi
     done
+    installed=("${safe[@]}")
+
+    # Lo que apt quitaría además por dependencias
+    if [ ${#installed[@]} -gt 0 ]; then
+        mapfile -t extra < <(LC_ALL=C apt-get -s purge "${installed[@]}" 2>/dev/null \
+            | awk '/^(Purg|Remv) / {print $2}' | grep -vxF -f <(printf '%s\n' "${installed[@]}"))
+        if [ ${#extra[@]} -gt 0 ]; then
+            echo -e "${YELLOW}⚠ También se quitarán porque dependen de ellas:${NC}"
+            printf "  ${YELLOW}•${NC} %s\n" "${extra[@]}"
+            if ! $AUTO_MODE && ! confirm "${CYAN}¿Continuar igualmente?${NC}"; then
+                echo -e "${YELLOW}ℹ Cancelado: no se eliminó nada${NC}"
+                return 0
+            fi
+        fi
+    fi
 
     if [ ${#installed[@]} -gt 0 ]; then
         echo -e "${CYAN}🗑 Eliminando ${#installed[@]} aplicaciones en una sola operación...${NC}"
@@ -1746,7 +2096,7 @@ install_missing_pkgs() {
         <(printf '%s\n' "${available[@]}") <(installed_pkgs "${available[@]}" | sort -u))
 
     if [ ${#missing[@]} -eq 0 ]; then
-        echo -e "  ${GREEN}✓ Todos los paquetes de Kubuntu ya están instalados${NC}"
+        echo -e "  ${GREEN}✓ Todos los paquetes de ${FLAVOR_NAME} ya están instalados${NC}"
         return 0
     fi
     echo -e "  ${RED}📦 Instalando ${#missing[@]} paquetes: ${missing[*]}${NC}"
@@ -1780,13 +2130,13 @@ revert_changes() {
     echo -e "\n${RED}📋 Esto hará:${NC}"
     echo -e "  • Quitar el PPA backports (Rolling Release) y volver Plasma a la versión oficial"
     echo -e "  • Desbloquear y reinstalar Snap"
-    echo -e "  • Reinstalar kubuntu-desktop y todas sus aplicaciones"
+    [ -n "$FLAVOR_META" ] && echo -e "  • Reinstalar ${FLAVOR_META} y todas sus aplicaciones"
     echo -e "  • Reinstalar los $removed_count paquetes eliminados con este script"
     echo -e "  • Restaurar los accesos directos del escritorio y del panel"
     echo -e "  • Volver a los valores de fábrica los ajustes del script (RAM, DNS, ZRAM, energía...)"
     echo ""
 
-    if ! confirm "${RED}⚠ ¿Revertir a Kubuntu original?${NC}"; then
+    if ! confirm "${RED}⚠ ¿Revertir a ${FLAVOR_NAME} original?${NC}"; then
         return 0
     fi
 
@@ -1805,10 +2155,11 @@ revert_changes() {
     sudo apt-mark unhold snapd >> "$LOG_FILE" 2>&1
     sudo rm -f /etc/apt/preferences.d/nosnap.pref
 
-    echo -e "${RED}[3/5] Reinstalando kubuntu-desktop y paquetes eliminados...${NC}"
+    echo -e "${RED}[3/5] Reinstalando ${FLAVOR_META:-el sistema} y paquetes eliminados...${NC}"
     local pkgs=()
-    mapfile -t pkgs < <(kubuntu_desktop_pkgs)
-    pkgs+=(kubuntu-desktop snapd)
+    mapfile -t pkgs < <(flavor_meta_pkgs)
+    [ -n "$FLAVOR_META" ] && pkgs+=("$FLAVOR_META")
+    pkgs+=(snapd)
     [ -f "$REMOVED_LIST" ] && mapfile -t -O "${#pkgs[@]}" pkgs < "$REMOVED_LIST"
     if install_missing_pkgs "${pkgs[@]}"; then
         rm -f "$REMOVED_LIST"
@@ -2231,7 +2582,7 @@ grub_prompt_guide() {
     grub_guide_header "📖 ARRANQUE MANUAL DESDE 'grub>'"
     cat << 'EOF'
 Si al encender aparece "grub>" (GRUB cargó, pero no encuentra su menú),
-puedes arrancar Kubuntu a mano. La tecla TAB autocompleta nombres y rutas.
+puedes arrancar Ubuntu a mano. La tecla TAB autocompleta nombres y rutas.
 
 PASO 1: ENCONTRAR LA PARTICIÓN DE KUBUNTU
     ls
@@ -2296,7 +2647,7 @@ PASO 4: UNA VEZ EN EL SISTEMA
   Ejecuta este script → opción 12 → 2 (REPARACIÓN RÁPIDA).
 
 SI "insmod normal" FALLA
-  Los archivos de GRUB están dañados: arranca desde un USB de Kubuntu
+  Los archivos de GRUB están dañados: arranca desde un USB de Ubuntu (de tu sabor)
   y usa la opción 10 (reparación automática desde Live USB).
 EOF
     echo -e "\n${YELLOW}📌 Presiona Enter para volver...${NC}"
@@ -2306,7 +2657,7 @@ EOF
 grub_live_guide() {
     grub_guide_header "📖 REPARACIÓN MANUAL DESDE LIVE USB"
     cat << 'EOF'
-Arranca desde un USB de Kubuntu ("Probar Kubuntu") y abre Konsole.
+Arranca desde un USB de Ubuntu de tu sabor ("Probar Ubuntu") y abre una terminal.
 La opción 10 de este menú hace todo esto automáticamente.
 
 1. IDENTIFICAR LA PARTICIÓN DEL SISTEMA (y la EFI, si el equipo es UEFI)
@@ -2356,7 +2707,7 @@ EOF
 # Reparación automática desde Live USB
 # ------------------------------------------------------------
 
-RESCUE_MNT="/mnt/kubuntu-rescate"
+RESCUE_MNT="/mnt/rescate-ubuntu"
 
 is_live_session() {
     grep -qw 'boot=casper' /proc/cmdline 2>/dev/null || [ -d /cdrom/casper ] \
@@ -2405,8 +2756,8 @@ grub_live_repair() {
 
     if ! is_live_session; then
         log_warning "Esto no parece una sesión Live USB"
-        echo -e "${YELLOW}  Esta opción es para cuando Kubuntu no arranca: inicia desde un USB de Kubuntu,${NC}"
-        echo -e "${YELLOW}  elige 'Probar Kubuntu', abre Konsole y ejecuta este script.${NC}"
+        echo -e "${YELLOW}  Esta opción es para cuando Ubuntu no arranca: inicia desde un USB de Ubuntu,${NC}"
+        echo -e "${YELLOW}  elige 'Probar Ubuntu', abre una terminal y ejecuta este script.${NC}"
         echo -e "${YELLOW}  Si el sistema arranca, usa la opción 2 (RÁPIDA) o 3 (COMPLETA).${NC}\n"
         if ! confirm "${PURPLE}¿Continuar de todos modos?${NC}"; then
             return 0
@@ -2453,7 +2804,7 @@ grub_live_repair() {
     rescue_umount
     sudo mkdir -p "$RESCUE_MNT"
     if [ "$root_fs" = "btrfs" ]; then
-        # Kubuntu instala la raíz en el subvolumen @
+        # Ubuntu instala la raíz en el subvolumen @
         sudo mount -o subvol=@ "$root_dev" "$RESCUE_MNT" 2>> "$LOG_FILE" \
             || run "No se pudo montar $root_dev" sudo mount "$root_dev" "$RESCUE_MNT" || return 1
     else
@@ -2961,7 +3312,7 @@ grub_hide_entries() {
         [[ "$chosen" == *" ${tag%%|*} "* ]] && new_hidden+=("$script|$title_only")
     done
     if [ "$kubuntu_total" -gt 0 ] && [ "$kubuntu_left" -eq 0 ]; then
-        log_error "No puedes ocultar todas las entradas de Kubuntu: no podrías arrancarlo. No se cambió nada."
+        log_error "No puedes ocultar todas las entradas de ${FLAVOR_NAME}: no podrías arrancarlo. No se cambió nada."
         return 1
     fi
 
@@ -2998,7 +3349,7 @@ grub_hide_entries() {
 write_others_first_script() {
     sudo tee "$GRUB_OTHERS_FIRST" > /dev/null << 'EOF'
 #!/bin/sh
-# Ubuntu Ultimate Tools: muestra los otros sistemas (Windows, otras distros) antes que Kubuntu.
+# Ubuntu Ultimate Tools: muestra los otros sistemas (Windows, otras distros) antes que Ubuntu.
 # El script de os-prober puede estar en su sitio o movido por Grub Customizer; si no
 # está, no hace nada (nunca debe hacer fallar update-grub).
 GRUB_DISABLE_OS_PROBER=false
@@ -3018,21 +3369,21 @@ EOF
     sudo chmod +x "$GRUB_OTHERS_FIRST"
 }
 
-# Otros sistemas antes que Kubuntu: un script que corre antes que 10_linux llama a
+# Otros sistemas antes que Ubuntu: un script que corre antes que 10_linux llama a
 # 30_os-prober, y el original queda desactivado con GRUB_DISABLE_OS_PROBER=true.
 grub_others_first_toggle() {
     if [ -f "$GRUB_OTHERS_FIRST" ]; then
-        confirm "${PURPLE}Los otros sistemas ya aparecen primero. ¿Volver a mostrar Kubuntu primero?${NC}" || return 0
+        confirm "${PURPLE}Los otros sistemas ya aparecen primero. ¿Volver a mostrar ${FLAVOR_NAME} primero?${NC}" || return 0
         sudo rm -f "$GRUB_OTHERS_FIRST"
         set_grub_var GRUB_DISABLE_OS_PROBER false
-        regen_grub && log_success "Kubuntu vuelve a estar primero en el menú"
+        regen_grub && log_success "${FLAVOR_NAME} vuelve a estar primero en el menú"
         return
     fi
-    confirm "${PURPLE}¿Mostrar Windows y los otros sistemas ANTES que Kubuntu en el menú?${NC}" || return 0
+    confirm "${PURPLE}¿Mostrar Windows y los otros sistemas ANTES que ${FLAVOR_NAME} en el menú?${NC}" || return 0
     command -v os-prober &> /dev/null || { apt_update; apt_install os-prober || return 1; }
     write_others_first_script
     set_grub_var GRUB_DISABLE_OS_PROBER true
-    # Que el orden no cambie lo que arranca solo: Kubuntu sigue siendo el predeterminado
+    # Que el orden no cambie lo que arranca solo: Ubuntu sigue siendo el predeterminado
     ensure_grub_saved
     [ $? -eq 1 ] && return 1
     regen_grub || return 1
@@ -3042,7 +3393,7 @@ grub_others_first_toggle() {
         kubuntu=$(grub_menu_entries | grep -m1 '^gnulinux-simple-' | cut -d'|' -f1)
         [ -n "$kubuntu" ] && sudo grub-set-default "$kubuntu"
     fi
-    log_success "Los otros sistemas aparecen primero (Kubuntu sigue arrancando por defecto; cámbialo con la opción 6)"
+    log_success "Los otros sistemas aparecen primero (${FLAVOR_NAME} sigue arrancando por defecto; cámbialo con la opción 6)"
 }
 
 grub_remember_last_toggle() {
@@ -3136,7 +3487,7 @@ grub_kernel_params_menu() {
     current=$(sed -n 's/^GRUB_CMDLINE_LINUX_DEFAULT=//p' /etc/default/grub | tr -d '"')
     echo -e "${PURPLE}⚙ Parámetros actuales:${NC} ${current:-(ninguno)}\n"
     echo -e "  ${PURPLE}1)${NC} Ver los mensajes al arrancar (quita 'quiet splash': útil si algo falla)"
-    echo -e "  ${PURPLE}2)${NC} Arranque silencioso con logo (pone 'quiet splash', lo normal en Kubuntu)"
+    echo -e "  ${PURPLE}2)${NC} Arranque silencioso con logo (pone 'quiet splash', lo normal en Ubuntu)"
     echo -e "  ${PURPLE}3)${NC} Escribirlos a mano"
     echo -e "\n  ${PURPLE}0)${NC} 🔙 Volver"
     echo ""
@@ -3273,7 +3624,7 @@ grub_customize_menu() {
         fi
         echo ""
         echo -e "  ${PURPLE}1)${NC} Ocultar o mostrar entradas: marca cada una (kernels, Windows, memtest...)"
-        echo -e "  ${PURPLE}2)${NC} Orden: otros sistemas (Windows...) antes o después de Kubuntu"
+        echo -e "  ${PURPLE}2)${NC} Orden: otros sistemas (Windows...) antes o después de ${FLAVOR_NAME}"
         echo -e "  ${PURPLE}3)${NC} Recordar el último sistema elegido"
         echo -e "  ${PURPLE}4)${NC} Apariencia: colores, imagen de fondo y resolución"
         echo -e "  ${PURPLE}5)${NC} Parámetros de arranque del kernel"
@@ -3313,7 +3664,7 @@ remove_refind() {
     log_success "rEFInd quitado"
 }
 
-# Pone primera la entrada UEFI de Ubuntu/Kubuntu
+# Pone primera la entrada UEFI de Ubuntu (todos los sabores usan "ubuntu")
 uefi_ubuntu_first() {
     local out order num new_order
     out=$(LC_ALL=C efibootmgr 2>/dev/null)
@@ -3335,7 +3686,7 @@ grub_full_repair() {
     echo -e "  • Reinstalar los paquetes de GRUB$($uefi && echo " (y shim para Secure Boot)")"
     echo -e "  • Reinstalar GRUB en $($uefi && echo "la partición EFI" || echo "el disco del sistema")"
     echo -e "  • Regenerar el menú de arranque"
-    $uefi && echo -e "  • Poner Kubuntu primero en el orden de arranque UEFI"
+    $uefi && echo -e "  • Poner ${FLAVOR_NAME} primero en el orden de arranque UEFI"
     echo -e "  • Comprobar el resultado"
     echo -e "\n${YELLOW}ℹ Para un sistema que NO arranca, usa la opción 10 desde un Live USB${NC}\n"
     confirm "${PURPLE}¿Empezar la reparación completa?${NC}" || return 0
@@ -3395,7 +3746,7 @@ grub_full_repair() {
         failed+=("comprobación")
     fi
     if $uefi && ! LC_ALL=C efibootmgr 2>/dev/null | grep -qi 'ubuntu'; then
-        log_error "No hay entrada UEFI de Ubuntu/Kubuntu"
+        log_error "No hay entrada UEFI de Ubuntu"
         failed+=("entrada UEFI")
     fi
 
@@ -3548,7 +3899,41 @@ remove_desktop_shortcuts() {
     echo -e "${CYAN}ℹ Guardados en $SHORTCUTS_BACKUP/escritorio (se restauran con 'Revertir')${NC}"
 }
 
+GNOME_FAVORITES_BACKUP="$SHORTCUTS_BACKUP/gnome-favoritas"
+
+# Apps fijadas en el dock de GNOME (Ubuntu): se guardan antes de vaciarlo
+remove_gnome_favorites() {
+    local current
+    current=$(gsettings get org.gnome.shell favorite-apps 2>/dev/null)
+    if [ -z "$current" ] || [ "$current" = "@as []" ] || [ "$current" = "[]" ]; then
+        echo -e "${YELLOW}ℹ No hay apps fijadas en el dock${NC}"
+        return 0
+    fi
+    echo -e "${CYAN}📌 Apps fijadas en el dock:${NC}"
+    tr -d "[]'" <<< "$current" | tr ',' '\n' | sed 's/^ *//; s/\.desktop$//; s/^/  • /'
+    echo ""
+    confirm "${CYAN}¿Quitar todas las apps fijadas del dock?${NC}" || return 0
+    mkdir -p "$SHORTCUTS_BACKUP"
+    [ -f "$GNOME_FAVORITES_BACKUP" ] || echo "$current" > "$GNOME_FAVORITES_BACKUP"
+    run "No se pudo cambiar el dock" gsettings set org.gnome.shell favorite-apps "[]" \
+        && log_success "Apps fijadas quitadas del dock"
+}
+
+restore_gnome_favorites() {
+    if [ ! -f "$GNOME_FAVORITES_BACKUP" ]; then
+        echo -e "  ${YELLOW}ℹ No hay copia del dock guardada${NC}"
+        return 0
+    fi
+    run "No se pudo restaurar el dock" gsettings set org.gnome.shell favorite-apps "$(cat "$GNOME_FAVORITES_BACKUP")" \
+        && rm -f "$GNOME_FAVORITES_BACKUP" && log_success "Dock restaurado"
+}
+
 remove_panel_launchers() {
+    case $DESKTOP in
+        gnome) remove_gnome_favorites; return ;;
+        kde) ;;
+        *) log_warning "Quitar las apps fijadas del panel solo está disponible en KDE Plasma y GNOME"; return 0 ;;
+    esac
     local applets launchers kwrite
     mapfile -t applets < <(taskmanager_applets)
     if [ ${#applets[@]} -eq 0 ]; then
@@ -3602,6 +3987,7 @@ restore_desktop_shortcuts() {
 }
 
 restore_panel_launchers() {
+    [ -f "$GNOME_FAVORITES_BACKUP" ] && restore_gnome_favorites
     local backup="$SHORTCUTS_BACKUP/panel-appletsrc"
     if [ ! -f "$backup" ]; then
         echo -e "  ${YELLOW}ℹ No hay copia del panel guardada${NC}"
@@ -3616,6 +4002,11 @@ restore_panel_launchers() {
 }
 
 remove_shortcuts_menu() {
+    if ! has_desktop; then
+        log_warning "Los accesos directos necesitan un escritorio (este sistema no tiene)"
+        pause
+        return 0
+    fi
     while true; do
         clear
         echo -e "${CYAN}${BOLD}"
@@ -3626,7 +4017,7 @@ remove_shortcuts_menu() {
 
         echo -e "\n${CYAN}📋 Opciones:${NC}\n"
         echo -e "  ${CYAN}1)${NC} Íconos del escritorio"
-        echo -e "  ${CYAN}2)${NC} Aplicaciones fijadas en el panel (barra de tareas)"
+        echo -e "  ${CYAN}2)${NC} Aplicaciones fijadas en el panel o el dock"
         echo -e "  ${CYAN}3)${NC} Restaurar los accesos quitados"
         echo -e "\n  ${CYAN}0)${NC} 🔙 Volver"
         echo ""
@@ -3678,7 +4069,7 @@ current_dns() {
     fi
 }
 
-# Aplica el DNS globalmente con systemd-resolved (usado por Kubuntu) y DNS cifrado
+# Aplica el DNS globalmente con systemd-resolved (usado por Ubuntu) y DNS cifrado
 # cuando el servidor lo permite. Si después no resuelve nombres, se deshace solo.
 set_dns() {
     local name="$1" servers
@@ -3935,8 +4326,15 @@ set_gaming_power() {
 set_power_profile() {
     local profile="$1"
     if ! command -v powerprofilesctl &> /dev/null; then
-        log_error "power-profiles-daemon no está instalado (¿usas TLP?)"
-        return 1
+        if installed_pkgs tlp | grep -qx tlp; then
+            log_error "Usas TLP: los perfiles de energía los maneja TLP (quítalo en la opción 18 para usar estos)"
+            return 1
+        fi
+        # Xubuntu, Lubuntu y otros no lo traen: es el servicio estándar de perfiles de energía
+        echo -e "${YELLOW}📦 Instalando power-profiles-daemon (perfiles de energía)...${NC}"
+        apt_update
+        apt_install_recorded power-profiles-daemon || return 1
+        run "No se pudo iniciar power-profiles-daemon" sudo systemctl enable --now power-profiles-daemon || return 1
     fi
     if ! powerprofilesctl list 2>/dev/null | grep -q "$profile:"; then
         log_error "Tu equipo no admite el perfil '$profile' (disponibles: $(power_profiles_available))"
@@ -3947,7 +4345,7 @@ set_power_profile() {
 }
 
 install_tlp() {
-    echo -e "${YELLOW}ℹ TLP reemplaza a power-profiles-daemon: el selector de perfiles de Plasma desaparecerá${NC}"
+    echo -e "${YELLOW}ℹ TLP reemplaza a power-profiles-daemon: el selector de perfiles del escritorio desaparecerá${NC}"
     apt_update
     apt_install_recorded tlp tlp-rdw || return 1
     run "No se pudo activar TLP" sudo systemctl enable --now tlp \
@@ -3972,6 +4370,55 @@ disable_baloo() {
     local cmd
     cmd=$(baloo_cmd) || { echo -e "  ${YELLOW}ℹ Baloo no está instalado${NC}"; return 0; }
     run "No se pudo desactivar Baloo" "$cmd" disable && log_success "Indexador de archivos Baloo desactivado"
+}
+
+# Servicio del indexador de GNOME (LocalSearch en versiones nuevas, Tracker en las anteriores)
+gnome_indexer_unit() {
+    local unit
+    for unit in localsearch-3.service tracker-miner-fs-3.service; do
+        if systemctl --user cat "$unit" &> /dev/null; then
+            echo "$unit"
+            return 0
+        fi
+    done
+    return 1
+}
+
+indexer_disabled() {
+    local cmd unit
+    if cmd=$(baloo_cmd); then
+        "$cmd" status 2>/dev/null | grep -qi 'disabled\|desactivad'
+    elif unit=$(gnome_indexer_unit); then
+        [ "$(systemctl --user is-enabled "$unit" 2>/dev/null)" = masked ]
+    else
+        return 1
+    fi
+}
+
+# El indexador recorre todos los archivos para la búsqueda: consume CPU, disco y batería
+disable_indexer() {
+    local unit
+    if baloo_cmd > /dev/null; then
+        disable_baloo
+    elif unit=$(gnome_indexer_unit); then
+        run "No se pudo desactivar el indexador" systemctl --user mask --now "$unit" \
+            && log_success "Indexador de archivos desactivado (${unit%%-*})"
+    else
+        echo -e "  ${YELLOW}ℹ No hay indexador de archivos activo en ${DESKTOP_NAME}${NC}"
+    fi
+}
+
+enable_indexer() {
+    local unit
+    if baloo_cmd > /dev/null; then
+        enable_baloo
+    elif unit=$(gnome_indexer_unit); then
+        run "No se pudo activar el indexador" systemctl --user unmask "$unit" \
+            && systemctl --user start "$unit" 2>> "$LOG_FILE"
+        log_success "Indexador de archivos activado (${unit%%-*})"
+    else
+        echo -e "  ${YELLOW}ℹ No hay indexador de archivos en ${DESKTOP_NAME}${NC}"
+    fi
 }
 
 enable_baloo() {
@@ -4062,7 +4509,7 @@ power_menu() {
         echo -e "  ${YELLOW}2)${NC} Equilibrado"
         echo -e "  ${YELLOW}3)${NC} Ahorro de energía"
         echo -e "  ${YELLOW}4)${NC} TLP: ahorro avanzado de batería para portátiles"
-        echo -e "  ${YELLOW}5)${NC} Activar/desactivar indexador de archivos Baloo"
+        echo -e "  ${YELLOW}5)${NC} Activar/desactivar el indexador de archivos (Baloo / Tracker)"
         echo -e "  ${YELLOW}6)${NC} Herramientas de juego (GameMode y MangoHud)"
         echo -e "\n  ${YELLOW}0)${NC} 🔙 Volver"
         echo ""
@@ -4075,10 +4522,10 @@ power_menu() {
             4) confirm "${YELLOW}¿Instalar TLP?${NC}" && install_tlp ;;
             5)
                 local cmd
-                if cmd=$(baloo_cmd) && "$cmd" status 2>/dev/null | grep -qi 'disabled\|desactivad'; then
-                    enable_baloo
+                if indexer_disabled; then
+                    enable_indexer
                 else
-                    disable_baloo
+                    disable_indexer
                 fi
                 ;;
             6) install_gaming_tools ;;
@@ -4098,7 +4545,7 @@ PROFILES=(
     "gaming|Juegos: drivers, kernel Liquorix, GameMode, máximo rendimiento, red de baja latencia"
     "ahorro|Ahorro de energía: TLP en portátiles, sin indexador, ZRAM"
     "desarrollo|Programación: git, compiladores, Python, VSCode, ajustes para IDEs"
-    "minimalista|Estilo KDE Neon: sin kubuntu-desktop, sin Snap, Firefox .deb, Plasma más nuevo"
+    "minimalista|Mínimo: sin meta-paquete ni apps extra, sin Snap, Firefox .deb (y Plasma más nuevo en KDE)"
 )
 
 # Pasos de cada perfil: "Descripción|función [argumentos]"
@@ -4107,7 +4554,7 @@ profile_steps() {
         productividad) cat << 'EOF'
 Desactivar indexación de manuales (apt más rápido)|disable_mandb
 Actualizar el sistema|do_system_update
-Quitar juegos preinstalados|remove_apps_with_progress kmahjongg kmines kpat ksudoku
+Quitar juegos preinstalados|remove_games
 Instalar herramientas (git, htop, fastfetch, timeshift, vim...)|install_optional_with_progress git curl wget htop fastfetch timeshift vim
 Optimizar RAM (swappiness y caché)|apply_ram_tweaks
 Activar ZRAM|enable_zram
@@ -4125,7 +4572,7 @@ Instalar GameMode y MangoHud|install_gaming_tools
 Optimizar RAM (swappiness y caché)|apply_ram_tweaks
 Activar ZRAM|enable_zram
 Perfil de energía: rendimiento máximo (o GameMode al jugar)|set_gaming_power
-Desactivar indexador Baloo|disable_baloo
+Desactivar el indexador de archivos|disable_indexer
 Wi-Fi sin ahorro de energía (menos latencia)|disable_wifi_powersave
 Activar TCP BBR|enable_bbr
 Usar el DNS más rápido (medido)|set_fastest_dns
@@ -4135,7 +4582,7 @@ EOF
 Desactivar indexación de manuales (apt más rápido)|disable_mandb
 Actualizar el sistema|do_system_update
 Ahorro de energía (TLP en portátil, perfil de ahorro en PC)|enable_power_saving
-Desactivar indexador Baloo|disable_baloo
+Desactivar el indexador de archivos|disable_indexer
 Activar ZRAM (menos escrituras en disco)|enable_zram
 Optimizar RAM (swappiness y caché)|apply_ram_tweaks
 Activar TRIM semanal para SSD|enable_trim
@@ -4156,13 +4603,13 @@ EOF
         minimalista) cat << 'EOF'
 Desactivar indexación de manuales (apt más rápido)|disable_mandb
 Actualizar el sistema|do_system_update
-Quitar meta-paquete kubuntu-desktop (las apps se conservan)|remove_kubuntu_meta
-Quitar apps preinstaladas (juegos, suite PIM, IRC, torrent...)|remove_apps_with_progress kmahjongg kmines kpat ksudoku kmail kontact korganizer kaddressbook kalarm knotes akregator konversation ktorrent k3b dragonplayer juk kmouth kteatime ktimer plasma-welcome kubuntu-docs kubuntu-web-shortcuts
+Quitar el meta-paquete del sabor (las apps se conservan)|remove_flavor_meta
+Quitar apps preinstaladas (juegos, correo y agenda, IRC, torrent...)|remove_minimal_extras
 Eliminar Snap por completo (se conservan los perfiles de Firefox)|do_snap_removal
 Instalar Firefox .deb de Mozilla|install_firefox_deb
-Activar KDE Rolling Release (backports)|enable_backports
-Actualizar a la versión más nueva de Plasma|do_system_update
-Desactivar indexador Baloo|disable_baloo
+Activar KDE Rolling Release (solo KDE)|enable_backports
+Actualizar con los paquetes más nuevos|do_system_update
+Desactivar el indexador de archivos|disable_indexer
 Activar ZRAM|enable_zram
 EOF
         ;;
@@ -4323,12 +4770,12 @@ remove_installed_programs() {
     log_success "Desinstalado: ${CHOSEN[*]}"
     run "Falló la limpieza de dependencias" sudo env DEBIAN_FRONTEND=noninteractive apt-get "${APT_OPTS[@]}" autoremove --purge
 
-    # Sin TLP, el selector de energía de Plasma necesita power-profiles-daemon
+    # Sin TLP, el selector de energía del escritorio necesita power-profiles-daemon
     if printf '%s\n' "${CHOSEN[@]}" | grep -qx tlp; then
         apt_update
         apt_install power-profiles-daemon \
             && run "No se pudo activar power-profiles-daemon" sudo systemctl enable --now power-profiles-daemon \
-            && log_success "Vuelve el selector de energía de Plasma"
+            && log_success "Vuelve el selector de energía del escritorio"
     fi
 }
 
@@ -4389,7 +4836,7 @@ remove_tlp() {
     apt_update
     apt_install power-profiles-daemon \
         && run "No se pudo activar power-profiles-daemon" sudo systemctl enable --now power-profiles-daemon \
-        && log_success "TLP quitado: vuelve el selector de energía de Plasma"
+        && log_success "TLP quitado: vuelve el selector de energía del escritorio"
 }
 
 # Muestra qué ajustes del script están activos. Devuelve 1 si no hay ninguno.
@@ -4415,10 +4862,10 @@ show_tweaks_status() {
     else
         factory_line "Energía: equilibrado"
     fi
-    if cmd=$(baloo_cmd) && "$cmd" status 2>/dev/null | grep -qi 'disabled\|desactivad'; then
-        changed_line "Baloo (indexador de archivos): desactivado"
+    if indexer_disabled; then
+        changed_line "Indexador de archivos: desactivado"
     else
-        factory_line "Baloo: activo"
+        factory_line "Indexador de archivos: activo (o no hay)"
     fi
     if [ -e /var/lib/man-db/auto-update ]; then factory_line "Indexación de manuales: activa"; else changed_line "Indexación de manuales: desactivada"; fi
     echo ""
@@ -4436,16 +4883,16 @@ restore_all_tweaks() {
     disable_zram
     echo -e "${YELLOW}🔋 Energía${NC}"
     if installed_pkgs tlp | grep -qx tlp; then
-        confirm "${YELLOW}¿Quitar TLP y volver al selector de energía de Plasma?${NC}" && remove_tlp
+        confirm "${YELLOW}¿Quitar TLP y volver al selector de energía del escritorio?${NC}" && remove_tlp
     elif command -v powerprofilesctl &> /dev/null; then
         set_power_profile balanced
     fi
     echo -e "${YELLOW}🔎 Indexadores${NC}"
     local cmd
-    if cmd=$(baloo_cmd) && "$cmd" status 2>/dev/null | grep -qi 'disabled\|desactivad'; then
-        enable_baloo
+    if indexer_disabled; then
+        enable_indexer
     else
-        echo -e "  ${GREEN}✓ Baloo ya está activo${NC}"
+        echo -e "  ${GREEN}✓ El indexador de archivos ya está activo (o no hay)${NC}"
     fi
     if [ -e /var/lib/man-db/auto-update ]; then
         echo -e "  ${GREEN}✓ La indexación de manuales ya está activa${NC}"
@@ -4466,11 +4913,11 @@ undo_menu() {
         echo -e "  ${RED}1)${NC} 📦 Ver y quitar PROGRAMAS instalados por el script"
         echo -e "  ${RED}2)${NC} 🔧 Restaurar ajustes del sistema (RAM, inotify, BBR...) a sus valores de fábrica"
         echo -e "  ${RED}3)${NC} 💾 Desactivar ZRAM"
-        echo -e "  ${RED}4)${NC} 🔋 Quitar TLP y volver al selector de energía de Plasma"
+        echo -e "  ${RED}4)${NC} 🔋 Quitar TLP y volver al selector de energía del escritorio"
         echo -e "  ${RED}5)${NC} 📋 Ver qué AJUSTES están cambiados y restaurarlos todos (no toca programas)"
         echo -e "\n  ${RED}0)${NC} 🔙 Volver"
-        echo -e "\n${YELLOW}ℹ Otros cambios se deshacen en su menú: kernel (4), Kubuntu original (9),${NC}"
-        echo -e "${YELLOW}  Snap (11), accesos directos (14), DNS/BBR/Wi-Fi (15), energía y Baloo (16)${NC}\n"
+        echo -e "\n${YELLOW}ℹ Otros cambios se deshacen en su menú: kernel (4), ${FLAVOR_NAME} original (9),${NC}"
+        echo -e "${YELLOW}  Snap (11), accesos directos (14), DNS/BBR/Wi-Fi (15), energía e indexador (16)${NC}\n"
         read -r -p "📌 Opción (0-5): " undo_option
 
         case $undo_option in
@@ -4570,14 +5017,18 @@ main_menu() {
         print_header
         echo -e "${CYAN}📌 ¿Qué deseas hacer?${NC}\n"
         echo -e "  ${CYAN} 1)${NC} 🗑️  Eliminar aplicaciones preinstaladas"
-        echo -e "  ${CYAN} 2)${NC} ⚙️  Configurar sistema (Rolling Release)"
+        if [ "$DESKTOP" = kde ]; then
+            echo -e "  ${CYAN} 2)${NC} ⚙️  Configurar sistema (meta-paquete, Rolling Release, manuales)"
+        else
+            echo -e "  ${CYAN} 2)${NC} ⚙️  Configurar sistema (meta-paquete y manuales)"
+        fi
         echo -e "  ${CYAN} 3)${NC} 🎮 Optimizar GPU (NVIDIA/AMD/Intel)"
         echo -e "  ${CYAN} 4)${NC} ⚡ Optimizar Kernel (Liquorix/XanMod/Estándar)"
         echo -e "  ${CYAN} 5)${NC} 💾 Optimizar Memoria RAM (automático)"
         echo -e "  ${CYAN} 6)${NC} 🔄 ACTUALIZAR SISTEMA (update/upgrade/clean)"
         echo -e "  ${CYAN} 7)${NC} 🖥️  Instalar Alacritty (terminal GPU) y temas"
         echo -e "  ${CYAN} 8)${NC} 📦 Instalar software opcional"
-        echo -e "  ${CYAN} 9)${NC} ↩️  Revertir a Kubuntu original"
+        echo -e "  ${CYAN} 9)${NC} ↩️  Revertir a ${FLAVOR_NAME} original"
         echo -e "  ${CYAN}10)${NC} ☢️  ELIMINACION NUCLEAR DE SNAP"
         echo -e "  ${CYAN}11)${NC} 🔄 REINSTALAR SNAP"
         echo -e "  ${CYAN}12)${NC} 🔧 ARRANQUE: reparar y personalizar GRUB/EFI"
@@ -4683,6 +5134,7 @@ fi
 while kill -0 "$$" 2>/dev/null; do sudo -n true; sleep 60; done 2>/dev/null &
 
 migrate_from_kubuntu_lite
+detect_flavor
 cleanup_pending_kernels
 
 if [ -n "$PROFILE" ]; then
