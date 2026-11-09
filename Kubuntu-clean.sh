@@ -2892,9 +2892,14 @@ grub_cfg_entries() {
 }
 
 grub_hide_entries() {
+    # Con Grub Customizer activo sus *_proxy duplican las entradas y aplican sus
+    # propias reglas: hay que deshacerlo antes de filtrar
     if [ -d /etc/grub.d/proxifiedScripts ]; then
-        log_warning "Primero deshaz los cambios de Grub Customizer (opción 7 de este menú)"
-        return 1
+        echo -e "${YELLOW}⚠ Grub Customizer está activo: genera cada entrada dos veces y aplica sus propias${NC}"
+        echo -e "${YELLOW}  reglas, así que primero hay que deshacer sus cambios (se guarda una copia).${NC}\n"
+        undo_grub_customizer || return 1
+        [ -d /etc/grub.d/proxifiedScripts ] && return 0
+        echo ""
     fi
     local entries=() tags=() line src shown title i=0 hidden=()
     on() { if "$@"; then echo "|ON"; fi; }
