@@ -22,6 +22,13 @@ sin importar el sabor. Al iniciar **detecta qué sabor y qué escritorio tienes*
 - 🎮 **Optimizar** GPU, RAM, red, DNS y energía, o aplicar un **perfil automático** (gaming, productividad...)
 - 📦 **Instalar** software popular y la terminal Alacritty con tema Tokyo Night
 - ↩️ **Deshacer** cualquier cambio o **revertir** a tu sabor original
+- 🖥️ **Ver** toda la información del sistema y del hardware, con fastfetch e inxi sin instalar
+
+<div align="center">
+
+![Menú principal](screenshots/01-menu-principal.png)
+
+</div>
 
 ---
 
@@ -30,14 +37,14 @@ sin importar el sabor. Al iniciar **detecta qué sabor y qué escritorio tienes*
 | Sabor | Escritorio | Notas |
 |-------|------------|-------|
 | **Ubuntu** (completo o mínimo) | GNOME | Modo oscuro, dock e indexador de GNOME |
-| **Kubuntu** | KDE Plasma | Tema Tokyo Night, panel de Plasma, Baloo y KDE Rolling Release (backports) |
+| **Kubuntu** | KDE Plasma | Tema Tokyo Night, panel de Plasma, Baloo y KDE Rolling Release (backports, solo Kubuntu) |
 | **Xubuntu** | Xfce | |
 | **Lubuntu** | LXQt | |
 | **Ubuntu MATE** | MATE | |
 | **Ubuntu Budgie** | Budgie | |
 | **Ubuntu Cinnamon** | Cinnamon | |
 | **Ubuntu Unity** | Unity | |
-| **Ubuntu Studio** | KDE Plasma | Igual que Kubuntu |
+| **Ubuntu Studio** | KDE Plasma | Igual que Kubuntu, salvo Rolling Release |
 | **Edubuntu** | GNOME | Igual que Ubuntu |
 | **Ubuntu Kylin** | UKUI | Sin lista propia de apps: solo las comunes |
 | **Ubuntu Server** | sin escritorio | Kernel, GRUB, red, RAM, Snap y actualizaciones |
@@ -97,7 +104,7 @@ chmod +x ubuntu-ultimate-tools.sh
 
 ```
  1) 🗑️  Eliminar aplicaciones preinstaladas
- 2) ⚙️  Configurar sistema (meta-paquete, manuales y, en KDE, Rolling Release)
+ 2) ⚙️  Configurar sistema (meta-paquete, manuales y Rolling Release solo para Kubuntu)
  3) 🎮 Optimizar GPU (NVIDIA/AMD/Intel)
  4) ⚡ Optimizar Kernel (Liquorix/XanMod/Estándar)
  5) 💾 Optimizar Memoria RAM (automático)
@@ -114,6 +121,7 @@ chmod +x ubuntu-ultimate-tools.sh
 16) 🔋 Energía y rendimiento
 17) 🚀 PERFILES AUTOMÁTICOS (gaming, productividad...)
 18) ↩️  Deshacer optimizaciones / quitar programas
+19) 🖥️  Información del sistema y hardware
 
  0) ❌ Salir
 ```
@@ -267,6 +275,28 @@ En todos los menús y submenús, **0** vuelve al menú anterior (en el principal
 
 ---
 
+🖥️ Información del sistema y hardware (opción 19)
+
+| | Opción | Qué muestra |
+|---|---|---|
+| 👀 | **1** Resumen rápido | Sabor, kernel, CPU, GPU, RAM, disco, tiempo encendido y temperatura. Sin internet ni instalar nada |
+| | **2** Fastfetch | El instalado o, si no lo tienes, uno **temporal** (descarga oficial que se borra al terminar) |
+| | **3** inxi | Igual: el instalado o el paquete oficial de Ubuntu usado **sin instalar**. Nivel normal o muy detallado |
+| 🔩 | **4** CPU y RAM | Modelo, núcleos, frecuencias y **cada módulo de RAM** (tamaño, tipo, velocidad, ranuras libres) |
+| | **5** Gráfica | Modelo y **driver en uso**; avisa si una NVIDIA usa el driver libre |
+| | **6** Discos | Particiones, espacio y **salud SMART** (horas de uso, desgaste, errores; instala `smartmontools` si hace falta) |
+| | **7** Temperaturas | CPU, GPU, discos y ventiladores, leídos del kernel |
+| | **8** Red | IP, Wi-Fi (señal y velocidad), velocidad del enlace, DNS y TCP |
+| | **9** Batería | Carga, **salud** (capacidad frente a la original) y ciclos |
+| | **10** USB | Dispositivos conectados |
+| 🩺 | **11** Diagnóstico | Servicios que fallaron, errores del último arranque, qué hace lento el arranque y procesos que más consumen |
+| | **12** Cambios del script | Kernel, GRUB, apps quitadas e instaladas y todos los ajustes aplicados |
+| 🧰 | **13** Buscar | Escribe una palabra (nvidia, temp, wifi, error...) y la busca en **toda** la información |
+| | **14** Guardar informe | Todo en `~/informe-sistema-<fecha>.txt`, **sin datos personales** (números de serie, MAC, IP, UUID, usuario, equipo y Wi-Fi) |
+| | **15** Rendimiento | Velocidad de lectura y escritura del disco, latencia y velocidad de descarga |
+
+---
+
 ⏱️ Velocidad
 
 - Las apps se instalan y eliminan **en una sola operación** de apt, no una por una.
@@ -374,41 +404,8 @@ graph LR
 
 📸 Capturas
 
-Menú de selección de software opcional
-
-```
-┌─────────────────────┤ Instalar Software Adicional ├─────────────────────┐
-│                                                                         │
-│    Usa ESPACIO para seleccionar los programas que QUIERES INSTALAR:     │
-│                                                                         │
-│    (*) filezilla      Cliente FTP/SFTP                                  │
-│    ( ) code           Visual Studio Code (editor)                       │
-│    (*) virtualbox     VirtualBox (máquinas virtuales)                   │
-│    ( ) google-chrome  Google Chrome (navegador)                         │
-│    (*) fastfetch      Fastfetch (info del sistema)                      │
-│                                                                         │
-│    <OK>                              <Cancelar>                         │
-└─────────────────────────────────────────────────────────────────────────┘
-```
-
-Terminal Alacritty con tema Tokyo Night
-
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│  ┌───────────────────────────────────────────────────────────────────┐  │
-│  │  user@ubuntu:~$ fastfetch                                        │  │
-│  │                                                                   │  │
-│  │       .:///:-.                    user@ubuntu                    │  │
-│  │     .:////////:-.                 OS: Ubuntu 24.04                │  │
-│  │    -////////////////:.            Kernel: 6.8.0-xx               │  │
-│  │   `:////////////////:.            Shell: bash 5.2.15              │  │
-│  │    :+///////////////+`            DE: KDE Plasma 6.0.4            │  │
-│  │   `-/+++++++++++++/.              Theme: Tokyo Night              │  │
-│  │    `.-://///:-.`                  Terminal: Alacritty             │  │
-│  │                                                                   │  │
-│  └───────────────────────────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────────────────┘
-```
+En la carpeta [**screenshots**](screenshots/) están las capturas de todos los menús: eliminar apps,
+GPU, kernel, arranque y GRUB, red, energía, perfiles, deshacer e información del sistema.
 
 ---
 
