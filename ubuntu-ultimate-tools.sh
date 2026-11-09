@@ -706,7 +706,10 @@ remove_flavor_meta() {
 
 enable_backports() {
     # El PPA de backports es de Kubuntu: en los demás sabores no existe
-    desktop_only kde "KDE Rolling Release (backports)" || return 0
+    if [ "$FLAVOR" != kubuntu ]; then
+        log_warning "KDE Rolling Release es solo para Kubuntu (este sistema es ${FLAVOR_NAME})"
+        return 0
+    fi
     if grep -rqs 'kubuntu-ppa/backports' /etc/apt/sources.list /etc/apt/sources.list.d/; then
         echo -e "  ${GREEN}✓ KDE Rolling Release (backports) ya está activo${NC}"
         return 0
@@ -750,9 +753,9 @@ configure_system() {
     fi
     fi
 
-    if [ "$DESKTOP" = kde ]; then
+    if [ "$FLAVOR" = kubuntu ]; then
     echo ""
-    echo -e "${GREEN}2. Cambio a KDE Rolling Release${NC}"
+    echo -e "${GREEN}2. Cambio a KDE Rolling Release (solo para Kubuntu)${NC}"
     echo -e "   ${GREEN}📝 Descripción:${NC} Cambia los repositorios a versión Rolling Release"
     echo -e "   ${GREEN}✓ Beneficio:${NC} Te dará las últimas versiones de KDE Plasma"
     echo ""
@@ -4545,7 +4548,7 @@ PROFILES=(
     "gaming|Juegos: drivers, kernel Liquorix, GameMode, máximo rendimiento, red de baja latencia"
     "ahorro|Ahorro de energía: TLP en portátiles, sin indexador, ZRAM"
     "desarrollo|Programación: git, compiladores, Python, VSCode, ajustes para IDEs"
-    "minimalista|Mínimo: sin meta-paquete ni apps extra, sin Snap, Firefox .deb (y Plasma más nuevo en KDE)"
+    "minimalista|Mínimo: sin meta-paquete ni apps extra, sin Snap, Firefox .deb (y Plasma más nuevo en Kubuntu)"
 )
 
 # Pasos de cada perfil: "Descripción|función [argumentos]"
@@ -4607,7 +4610,7 @@ Quitar el meta-paquete del sabor (las apps se conservan)|remove_flavor_meta
 Quitar apps preinstaladas (juegos, correo y agenda, IRC, torrent...)|remove_minimal_extras
 Eliminar Snap por completo (se conservan los perfiles de Firefox)|do_snap_removal
 Instalar Firefox .deb de Mozilla|install_firefox_deb
-Activar KDE Rolling Release (solo KDE)|enable_backports
+Activar KDE Rolling Release (solo para Kubuntu)|enable_backports
 Actualizar con los paquetes más nuevos|do_system_update
 Desactivar el indexador de archivos|disable_indexer
 Activar ZRAM|enable_zram
@@ -4942,6 +4945,424 @@ undo_menu() {
 }
 
 # ============================================================
+# OPCIÓN 19: INFORMACIÓN DEL SISTEMA Y HARDWARE (COLOR: CIAN)
+# ============================================================
+
+# Cada sección imprime texto sin colores: así sirve para la pantalla, para buscar
+# y para guardar el informe. Con INFO_QUIET=true no pregunta ni descarga nada.
+INFO_QUIET=false
+
+info_title() {
+    echo ""
+    echo "▶ $1"
+}
+
+# Temperatura de la CPU desde el kernel (no necesita programas extra)
+cpu_temperature() {
+    local dir name temp
+    for dir in /sys/class/hwmon/hwmon*; do
+        name=$(cat "$dir/name" 2>/dev/null)
+        case $name in
+            k10temp|coretemp|zenpower|cpu_thermal|acpitz)
+                temp=$(cat "$dir/temp1_input" 2>/dev/null) || continue
+                echo "$((temp / 1000))°C"
+                return 0 ;;
+        esac
+    done
+    return 1
+}
+
+info_summary() {
+    local temp
+    info_title "RESUMEN"
+    echo "  Sistema:    $(os_release_value PRETTY_NAME) · ${FLAVOR_NAME} (${DESKTOP_NAME}, sesión ${XDG_SESSION_TYPE:-sin escritorio})"
+    echo "  Kernel:     $(uname -r)"
+    echo "  Encendido:  $(LC_ALL=C uptime -p | sed -e 's/^up //' -e 's/weeks/semanas/; s/week/semana/' \
+        -e 's/days/días/; s/day/día/; s/hours/horas/; s/hour/hora/; s/minutes/minutos/; s/minute/minuto/')"
+    echo "  CPU:        $(LC_ALL=C lscpu | sed -n 's/^Model name: *//p' | head -1) ($(nproc) hilos)"
+    LC_ALL=C lspci 2>/dev/null | grep -Ei 'vga|3d controller|display controller' | sed 's/^[^ ]* [^:]*: /  GPU:        /'
+    free -h | awk '/^Mem:/ {print "  RAM:        " $3 " en uso de " $2} /^Swap:/ {print "  Swap/ZRAM:  " $3 " en uso de " $2}'
+    df -h / | awk 'NR == 2 {print "  Disco (/):  " $3 " en uso de " $2 " (" $5 ")"}'
+    temp=$(cpu_temperature) && echo "  Temp. CPU:  $temp"
+}
+
+# Ejecuta fastfetch: el instalado o uno temporal que se borra al terminar
+info_fastfetch() {
+    if command -v fastfetch &> /dev/null; then
+        fastfetch
+        return
+    fi
+    $INFO_QUIET && return 0
+    echo -e "${CYAN}ℹ fastfetch no está instalado. Se puede ver sin instalar: se descarga (~1,5 MB) a una${NC}"
+    echo -e "${CYAN}  carpeta temporal desde su página oficial y se borra al terminar.${NC}"
+    confirm "${CYAN}¿Verlo sin instalar?${NC}" || return 0
+    local tmp arch
+    arch=$(dpkg --print-architecture)
+    [ "$arch" = arm64 ] && arch=aarch64
+    tmp=$(mktemp -d)
+    if run "No se pudo descargar fastfetch" wget -qO "$tmp/ff.tar.gz" \
+        "https://github.com/fastfetch-cli/fastfetch/releases/latest/download/fastfetch-linux-$arch.tar.gz" \
+        && tar -xzf "$tmp/ff.tar.gz" -C "$tmp"; then
+        local ffbin=("$tmp"/fastfetch-linux-*/usr/bin/fastfetch)
+        "${ffbin[0]}"
+    fi
+    rm -rf "$tmp"
+}
+
+# Ejecuta inxi: el instalado o el paquete oficial de Ubuntu, usado sin instalar
+info_inxi() {
+    local flags="$1" tmp
+    if command -v inxi &> /dev/null; then
+        # shellcheck disable=SC2086  # varias opciones
+        inxi $flags
+        return
+    fi
+    $INFO_QUIET && return 0
+    echo -e "${CYAN}ℹ inxi no está instalado. Se puede ver sin instalar: se descarga el paquete oficial de${NC}"
+    echo -e "${CYAN}  Ubuntu (~350 KB) a una carpeta temporal y se borra al terminar.${NC}"
+    confirm "${CYAN}¿Verlo sin instalar?${NC}" || return 0
+    tmp=$(mktemp -d)
+    apt_update
+    if (cd "$tmp" && run "No se pudo descargar inxi" apt-get download inxi) \
+        && dpkg-deb -x "$tmp"/inxi_*.deb "$tmp/x"; then
+        # shellcheck disable=SC2086  # varias opciones
+        perl "$tmp/x/usr/bin/inxi" $flags
+    fi
+    rm -rf "$tmp"
+}
+
+info_cpu_ram() {
+    info_title "CPU"
+    LC_ALL=C lscpu | grep -E '^(Model name|CPU\(s\)|Thread\(s\) per core|Core\(s\) per socket|CPU max MHz|CPU min MHz|L3 cache|Virtualization):' \
+        | sed -e 's/^Model name:/Modelo:/' -e 's/^CPU(s):/Hilos:/' -e 's/^Thread(s) per core:/Hilos por núcleo:/' \
+              -e 's/^Core(s) per socket:/Núcleos:/' -e 's/^CPU max MHz:/Frecuencia máxima (MHz):/' \
+              -e 's/^CPU min MHz:/Frecuencia mínima (MHz):/' -e 's/^L3 cache:/Caché L3:/' -e 's/^Virtualization:/Virtualización:/' \
+              -e 's/  */ /g; s/^/  /'
+    info_title "MEMORIA RAM"
+    free -h | awk '/^Mem:/ {print "  Total " $2 " · en uso " $3 " · disponible " $7}'
+    if command -v dmidecode &> /dev/null; then
+        # Un bloque "Memory Device" por ranura de la placa
+        LC_ALL=C sudo dmidecode -t memory 2>/dev/null | awk -F': ' '
+            /^Memory Device/ { if (slot != "") out(); size = type = speed = maker = slot = ""; next }
+            /^\tSize:/ { size = $2 }
+            /^\tType:/ { type = $2 }
+            /^\tConfigured Memory Speed:/ { speed = $2 }
+            /^\tSpeed:/ { if (speed == "" || speed == "Unknown") speed = $2 }
+            /^\tManufacturer:/ { maker = $2 }
+            /^\tLocator:/ { slot = $2 }
+            function out() {
+                if (size ~ /No Module|^$/) printf "  Ranura %-12s vacía\n", slot
+                else printf "  Ranura %-12s %s %s a %s (%s)\n", slot, size, type, speed, maker
+            }
+            END { if (slot != "") out() }'
+    fi
+}
+
+info_gpu() {
+    info_title "TARJETA GRÁFICA"
+    LC_ALL=C lspci -k 2>/dev/null | awk '
+        /^[^\t]/ { show = ($0 ~ /VGA|3D controller|Display controller/) }
+        show && /^[^\t]/ { sub(/^[^ ]+ [^:]+: /, ""); print "  " $0 }
+        show && /Kernel driver in use/ { sub(/.*: /, ""); print "    Driver en uso: " $0 }'
+    if LC_ALL=C lspci -k 2>/dev/null | grep -A3 -i nvidia | grep -q 'driver in use: nouveau'; then
+        echo "  ⚠ La NVIDIA usa el driver libre 'nouveau': para juegos instala el de NVIDIA (opción 15 → 6)"
+    fi
+}
+
+info_disks() {
+    local disk
+    info_title "DISCOS Y PARTICIONES"
+    lsblk -o NAME,SIZE,TYPE,FSTYPE,MOUNTPOINTS,MODEL 2>/dev/null | grep -v -E 'loop|zram' | sed 's/^/  /'
+    info_title "ESPACIO"
+    df -h -x tmpfs -x devtmpfs -x squashfs -x overlay -x efivarfs 2>/dev/null | sed 's/^/  /'
+    info_title "SALUD DE LOS DISCOS (SMART)"
+    if ! command -v smartctl &> /dev/null; then
+        if $INFO_QUIET; then
+            echo "  (smartmontools no está instalado)"
+            return 0
+        fi
+        echo -e "${CYAN}ℹ Para leer la salud de los discos hace falta smartmontools (se puede quitar en la opción 18)${NC}"
+        confirm "${CYAN}¿Instalarlo?${NC}" || return 0
+        apt_update
+        apt_install_recorded smartmontools || return 1
+    fi
+    for disk in $(lsblk -dnpo NAME,TYPE | awk '$2 == "disk" && $1 !~ /zram/ {print $1}'); do
+        echo "  $disk"
+        LC_ALL=C sudo smartctl -H -A "$disk" 2>/dev/null | grep -E \
+            'overall-health|Percentage Used|Power On Hours|Power_On_Hours|^Temperature:|Temperature_Celsius|Media and Data Integrity|Reallocated_Sector|Wear_Leveling|Percent_Lifetime|Unsafe Shutdowns|Available Spare:' \
+            | sed -e 's/SMART overall-health self-assessment test result:/Estado general:/' -e 's/  */ /g; s/^/    /'
+    done
+}
+
+info_temps() {
+    local dir name file label value found=false
+    info_title "TEMPERATURAS Y VENTILADORES"
+    for dir in /sys/class/hwmon/hwmon*; do
+        name=$(cat "$dir/name" 2>/dev/null) || continue
+        for file in "$dir"/temp*_input "$dir"/fan*_input; do
+            [ -f "$file" ] || continue
+            value=$(cat "$file" 2>/dev/null) || continue
+            label=$(cat "${file%_input}_label" 2>/dev/null || basename "${file%_input}")
+            if [[ "$file" == *temp* ]]; then
+                printf "  %-14s %-12s %3s°C\n" "$name" "$label" "$((value / 1000))"
+            else
+                printf "  %-14s %-12s %s RPM\n" "$name" "$label" "$value"
+            fi
+            found=true
+        done
+    done
+    $found || echo "  No hay sensores disponibles"
+}
+
+info_network() {
+    local iface speed
+    info_title "RED"
+    ip -br addr 2>/dev/null | grep -v '^lo ' | sed 's/^/  /'
+    echo "  Salida a internet por: $(ip route show default 2>/dev/null | awk '{print $5; exit}')"
+    for iface in /sys/class/net/*; do
+        speed=$(cat "$iface/speed" 2>/dev/null) || continue
+        [ "${speed:-0}" -gt 0 ] 2>/dev/null && echo "  Velocidad del enlace de ${iface##*/}: $speed Mb/s"
+    done
+    if command -v nmcli &> /dev/null; then
+        LC_ALL=C nmcli -t -f ACTIVE,SSID,SIGNAL,RATE,SECURITY dev wifi 2>/dev/null | awk -F: '$1 == "yes" {
+            print "  Wi-Fi conectado: " $2 " · señal " $3 "% · " $4 " · " $5 }'
+    fi
+    echo "  DNS: $(current_dns) · TCP: $(sysctl -n net.ipv4.tcp_congestion_control 2>/dev/null)"
+}
+
+info_battery() {
+    local bat full design health found=false
+    info_title "BATERÍA"
+    for bat in /sys/class/power_supply/BAT*; do
+        [ -d "$bat" ] || continue
+        found=true
+        full=$(cat "$bat/energy_full" 2>/dev/null || cat "$bat/charge_full" 2>/dev/null)
+        design=$(cat "$bat/energy_full_design" 2>/dev/null || cat "$bat/charge_full_design" 2>/dev/null)
+        echo "  ${bat##*/}: $(cat "$bat/manufacturer" 2>/dev/null) $(cat "$bat/model_name" 2>/dev/null)"
+        echo "    Carga: $(cat "$bat/capacity" 2>/dev/null)% · estado: $(cat "$bat/status" 2>/dev/null)"
+        if [ -n "$full" ] && [ -n "$design" ] && [ "$design" -gt 0 ]; then
+            health=$((full * 100 / design))
+            echo "    Salud: ${health}% de la capacidad original"
+        fi
+        [ -f "$bat/cycle_count" ] && echo "    Ciclos de carga: $(cat "$bat/cycle_count")"
+    done
+    $found || echo "  No hay batería (equipo de escritorio)"
+}
+
+info_usb() {
+    info_title "USB Y PERIFÉRICOS"
+    if command -v lsusb &> /dev/null; then
+        lsusb | sed 's/^Bus [0-9]* Device [0-9]*: ID [0-9a-f:]* /  /' | grep -vi 'root hub'
+    else
+        echo "  (usbutils no está instalado)"
+    fi
+}
+
+info_diagnostics() {
+    info_title "SERVICIOS QUE FALLARON"
+    { LC_ALL=C systemctl --failed --no-legend --plain 2>/dev/null; LC_ALL=C systemctl --user --failed --no-legend --plain 2>/dev/null; } \
+        | sed 's/^/  /' | grep . || echo "  Ninguno"
+    info_title "ERRORES DEL ÚLTIMO ARRANQUE (los 15 más recientes)"
+    LC_ALL=C sudo journalctl -b -p err --no-pager -q 2>/dev/null | tail -15 | cut -c1-160 | sed 's/^/  /' | grep . || echo "  Ninguno"
+    info_title "TIEMPO DE ARRANQUE"
+    LC_ALL=C systemd-analyze 2>/dev/null | head -1 | sed 's/^/  /'
+    echo "  Lo que más tarda:"
+    LC_ALL=C systemd-analyze blame 2>/dev/null | head -8 | sed 's/^ */    /'
+    info_title "PROCESOS QUE MÁS CONSUMEN"
+    echo "  Por CPU:"
+    ps -eo pid,comm,%cpu,%mem --sort=-%cpu | head -6 | sed 's/^/    /'
+    echo "  Por memoria:"
+    ps -eo pid,comm,%cpu,%mem --sort=-%mem | head -6 | sed 's/^/    /'
+}
+
+info_script_changes() {
+    local custom count
+    info_title "CAMBIOS HECHOS POR ESTE SCRIPT"
+    echo "  Kernel en uso: $(uname -r)"
+    custom=$(installed_pkgs 'linux-image-[0-9]*' | grep -E 'liquorix|xanmod' | sed 's/^linux-image-//' | tr '\n' ' ')
+    [ -n "$custom" ] && echo "  Kernels de terceros instalados: $custom"
+    [ -n "$FLAVOR_META" ] && ! installed_pkgs "$FLAVOR_META" | grep -qx -- "$FLAVOR_META" \
+        && echo "  Meta-paquete $FLAVOR_META: quitado"
+    [ -f /etc/default/grub ] && echo "  GRUB: $(grep -E '^GRUB_(DEFAULT|TIMEOUT)=' /etc/default/grub | tr '\n' ' ')"
+    if [ -s "$GRUB_HIDDEN_LIST" ]; then
+        echo "  Entradas ocultas en GRUB: $(wc -l < "$GRUB_HIDDEN_LIST")"
+    fi
+    [ -f "$GRUB_OTHERS_FIRST" ] && echo "  GRUB: otros sistemas antes que ${FLAVOR_NAME}"
+    [ -f "$GRUB_LOOK_FILE" ] && echo "  GRUB: colores personalizados"
+    if [ -f "$REMOVED_LIST" ]; then
+        count=$(wc -l < "$REMOVED_LIST")
+        echo "  Paquetes eliminados: $count"
+    fi
+    if [ -f "$INSTALLED_LIST" ]; then
+        echo "  Programas instalados: $(tr '\n' ' ' < "$INSTALLED_LIST")"
+    fi
+    show_tweaks_status | sed 's/\x1b\[[0-9;]*m//g' | grep -v '^$' | grep -v 'Estado actual' | sed 's/^ */  /'
+    return 0
+}
+
+# Informe completo en texto, sin preguntas ni descargas
+info_full_report() {
+    local was=$INFO_QUIET
+    INFO_QUIET=true
+    echo "Informe de Ubuntu Ultimate Tools · $(date '+%Y-%m-%d %H:%M')"
+    info_summary
+    info_cpu_ram
+    info_gpu
+    info_disks
+    info_temps
+    info_network
+    info_battery
+    info_usb
+    info_diagnostics
+    info_script_changes
+    if command -v inxi &> /dev/null; then
+        info_title "INXI"
+        inxi -Fxxz -c 0 2>/dev/null | sed 's/^/  /'
+    fi
+    INFO_QUIET=$was
+}
+
+# Quita datos personales antes de compartir: números de serie, MAC, IP, UUID,
+# nombre de usuario, nombre del equipo y red Wi-Fi
+privacy_filter() {
+    local host
+    host=$(hostname)
+    sed -E \
+        -e 's/(Serial( Number)?|serial)( *[:=] *).*/\1\3(oculto)/' \
+        -e 's/([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}/XX:XX:XX:XX:XX:XX/g' \
+        -e 's/\b([0-9]{1,3}\.){3}[0-9]{1,3}(\/[0-9]+)?\b/x.x.x.x/g' \
+        -e 's/\b([0-9a-fA-F]{0,4}:){3,7}[0-9a-fA-F]{1,4}(\/[0-9]+)?\b/x:x:x:x/g' \
+        -e 's/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/uuid-oculto/g' \
+        -e 's/(Wi-Fi conectado: )[^·]*/\1(oculta) /' \
+        -e "s/\\b${USER}\\b/usuario/g" \
+        -e "s/\\b${host}\\b/equipo/g"
+}
+
+info_search() {
+    local report term
+    report=$(mktemp)
+    echo -e "${CYAN}⏳ Reuniendo toda la información...${NC}"
+    info_full_report > "$report" 2>/dev/null
+    while true; do
+        echo ""
+        read -r -p "🔎 Palabra a buscar (por ejemplo nvidia, temp, wifi, error; Enter = volver): " term
+        [ -n "$term" ] || break
+        local matches
+        # Solo en el contenido, no en los títulos de las secciones
+        matches=$(awk -v t="$term" 'BEGIN {t = tolower(t)}
+            /^▶ / {sec = substr($0, 5); next}
+            index(tolower($0), t) {print "[" sec "]\t" $0}' "$report")
+        if [ -z "$matches" ]; then
+            echo -e "${YELLOW}  No aparece \"$term\"${NC}"
+            continue
+        fi
+        echo -e "${GREEN}  $(wc -l <<< "$matches") resultados:${NC}"
+        local sec line
+        while IFS=$'\t' read -r sec line; do
+            printf "  ${CYAN}%s${NC} %s\n" "$sec" "$(GREP_COLORS='mt=01;33' grep --color=always -i -F -- "$term" <<< "${line# }")"
+        done <<< "$matches"
+    done
+    rm -f "$report"
+}
+
+info_save_report() {
+    local file
+    file="$HOME/informe-sistema-$(date +%Y%m%d-%H%M).txt"
+    echo -e "${CYAN}⏳ Reuniendo toda la información...${NC}"
+    info_full_report 2>/dev/null | privacy_filter > "$file"
+    log_success "Informe guardado en: $file"
+    echo -e "${CYAN}ℹ Se ocultaron números de serie, MAC, IP, UUID, usuario, nombre del equipo y red Wi-Fi.${NC}"
+    echo -e "${CYAN}  Revísalo antes de compartirlo.${NC}"
+}
+
+# Prueba rápida: velocidad del disco del usuario y de internet
+info_benchmark() {
+    local file free out
+    info_title "VELOCIDAD DEL DISCO (carpeta personal)"
+    free=$(df -Pm "$HOME" | awk 'NR == 2 {print $4}')
+    if [ "${free:-0}" -lt 2048 ]; then
+        echo "  No hay espacio libre suficiente para la prueba (hace falta 2 GB)"
+    else
+        file="$HOME/.prueba-velocidad-uut"
+        out=$(LC_ALL=C dd if=/dev/zero of="$file" bs=1M count=1024 oflag=direct conv=fdatasync 2>&1 | tail -1)
+        echo "  Escritura: ${out##*, }"
+        out=$(LC_ALL=C dd if="$file" of=/dev/null bs=1M iflag=direct 2>&1 | tail -1)
+        echo "  Lectura:   ${out##*, }"
+        rm -f "$file"
+    fi
+
+    info_title "INTERNET"
+    local avg start end bytes=50000000
+    avg=$(LC_ALL=C ping -c 4 -q 1.1.1.1 2>/dev/null | awk -F'/' '/^rtt/ {print $5}')
+    echo "  Latencia (ping a 1.1.1.1): ${avg:+$avg ms}${avg:-sin respuesta}"
+    start=$(date +%s.%N)
+    if wget -qO /dev/null "https://speed.cloudflare.com/__down?bytes=$bytes" 2>> "$LOG_FILE"; then
+        end=$(date +%s.%N)
+        awk -v b="$bytes" -v t="$(awk -v a="$start" -v z="$end" 'BEGIN {print z - a}')" \
+            'BEGIN {printf "  Descarga: %.0f Mb/s (50 MB desde Cloudflare)\n", b * 8 / t / 1000000}'
+    else
+        echo "  Descarga: no se pudo medir (¿hay conexión a internet?)"
+    fi
+    echo "  (Valores aproximados: repítela si el equipo estaba ocupado)"
+}
+
+sysinfo_menu() {
+    local option level
+    while true; do
+        clear
+        echo -e "${CYAN}${BOLD}"
+        echo "╔══════════════════════════════════════════════════════════════════╗"
+        echo "║                    🖥️ INFORMACIÓN DEL SISTEMA                     ║"
+        echo "╚══════════════════════════════════════════════════════════════════╝"
+        echo -e "${NC}"
+        echo -e "${CYAN}👀 Vistas rápidas:${NC}"
+        echo -e "  ${CYAN} 1)${NC} Resumen rápido (sin internet ni instalar nada)"
+        echo -e "  ${CYAN} 2)${NC} Fastfetch (el instalado o uno temporal)"
+        echo -e "  ${CYAN} 3)${NC} inxi: informe completo (el instalado o uno temporal)"
+        echo -e "\n${CYAN}🔩 Hardware en detalle:${NC}"
+        echo -e "  ${CYAN} 4)${NC} CPU y memoria RAM (cada módulo y ranuras libres)"
+        echo -e "  ${CYAN} 5)${NC} Tarjeta gráfica y driver en uso"
+        echo -e "  ${CYAN} 6)${NC} Discos, espacio y salud (SMART)"
+        echo -e "  ${CYAN} 7)${NC} Temperaturas y ventiladores"
+        echo -e "  ${CYAN} 8)${NC} Red: IP, Wi-Fi, velocidad del enlace y DNS"
+        echo -e "  ${CYAN} 9)${NC} Batería: salud y ciclos"
+        echo -e "  ${CYAN}10)${NC} USB y periféricos"
+        echo -e "\n${CYAN}🩺 Estado del sistema:${NC}"
+        echo -e "  ${CYAN}11)${NC} Diagnóstico: servicios fallidos, errores, arranque y procesos"
+        echo -e "  ${CYAN}12)${NC} Qué cambió este script"
+        echo -e "\n${CYAN}🧰 Herramientas:${NC}"
+        echo -e "  ${CYAN}13)${NC} 🔎 Buscar en toda la información"
+        echo -e "  ${CYAN}14)${NC} 💾 Guardar informe completo para compartir (sin datos personales)"
+        echo -e "  ${CYAN}15)${NC} ⏱️ Prueba de rendimiento (disco e internet)"
+        echo -e "\n  ${CYAN} 0)${NC} 🔙 Volver"
+        echo ""
+        read -r -p "📌 Opción (0-15): " option
+        case $option in
+            1) info_summary ;;
+            2) info_fastfetch ;;
+            3)
+                read -r -p "  Nivel: 1) normal  2) muy detallado [1]: " level
+                if [ "$level" = 2 ]; then info_inxi "-Fxxx"; else info_inxi "-F"; fi ;;
+            4) info_cpu_ram ;;
+            5) info_gpu ;;
+            6) info_disks ;;
+            7) info_temps ;;
+            8) info_network ;;
+            9) info_battery ;;
+            10) info_usb ;;
+            11) info_diagnostics ;;
+            12) info_script_changes ;;
+            13) info_search ;;
+            14) info_save_report ;;
+            15) info_benchmark ;;
+            0) return 0 ;;
+            *) echo -e "${RED}❌ Opción inválida${NC}"; sleep 1; continue ;;
+        esac
+        pause
+    done
+}
+
+# ============================================================
 # MIGRACIÓN DESDE "KUBUNTU LITE"
 # ============================================================
 
@@ -5017,8 +5438,8 @@ main_menu() {
         print_header
         echo -e "${CYAN}📌 ¿Qué deseas hacer?${NC}\n"
         echo -e "  ${CYAN} 1)${NC} 🗑️  Eliminar aplicaciones preinstaladas"
-        if [ "$DESKTOP" = kde ]; then
-            echo -e "  ${CYAN} 2)${NC} ⚙️  Configurar sistema (meta-paquete, Rolling Release, manuales)"
+        if [ "$FLAVOR" = kubuntu ]; then
+            echo -e "  ${CYAN} 2)${NC} ⚙️  Configurar sistema (meta-paquete, manuales, Rolling Release solo Kubuntu)"
         else
             echo -e "  ${CYAN} 2)${NC} ⚙️  Configurar sistema (meta-paquete y manuales)"
         fi
@@ -5038,9 +5459,10 @@ main_menu() {
         echo -e "  ${CYAN}16)${NC} 🔋 Energía y rendimiento"
         echo -e "  ${CYAN}17)${NC} 🚀 PERFILES AUTOMÁTICOS (gaming, productividad...)"
         echo -e "  ${CYAN}18)${NC} ↩️  Deshacer optimizaciones / quitar programas"
+        echo -e "  ${CYAN}19)${NC} 🖥️  Información del sistema y hardware"
         echo -e "\n  ${CYAN} 0)${NC} ❌ Salir"
         echo ""
-        read -r -p "🔢 Opción (0-18): " option
+        read -r -p "🔢 Opción (0-19): " option
 
         case $option in
             1) select_apps_to_remove ;;
@@ -5061,6 +5483,7 @@ main_menu() {
             16) power_menu ;;
             17) profiles_menu ;;
             18) undo_menu ;;
+            19) sysinfo_menu ;;
             0)
                 echo -e "\n${GREEN}✅ ¡Hasta luego!${NC}"
                 exit 0
