@@ -178,12 +178,22 @@ Todo lo hace el propio script, sin instalar programas externos.
 | 🎨 | **6** Sistema por defecto | Qué entrada arranca sola y cuántos segundos espera el menú |
 | | **7** Otros sistemas | Detectar Windows y otras distros (`os-prober`, que Ubuntu trae desactivado) |
 | | **8** Orden de arranque UEFI | Poner una entrada primera, o arrancarla solo la próxima vez |
-| | **9** Personalizar menú | Ocultar entradas (recuperación, otros sistemas, memtest, UEFI), mostrar otros sistemas antes que Kubuntu, recordar el último elegido, colores, imagen de fondo, resolución, parámetros del kernel y **restaurar el menú original** |
+| | **9** Personalizar menú | **Ocultar cualquier entrada** marcándola con la barra espaciadora (cada kernel, Windows, cada memtest, UEFI...), mostrar otros sistemas antes que Kubuntu, recordar el último elegido, colores, imagen de fondo, resolución, parámetros del kernel, **restaurar el menú original** y **deshacer los cambios de Grub Customizer** |
 | 🚑 | **10** Reparar desde Live USB | Reparación automática con chroot cuando el sistema no arranca |
 | | **11–13** Guías | Prompt `grub>`, `grub rescue>` y reparación manual desde Live USB |
 
 Antes del primer cambio, el script guarda una copia de `/etc/default/grub`
 (`/etc/default/grub.kubuntu-lite.orig`) para poder volver al menú original.
+
+Para ocultar entradas sueltas, el script desactiva el script de GRUB que las genera y en su lugar
+ejecuta `<script>_kubuntu_lite`, que lo llama y quita las entradas de la lista
+`/etc/kubuntu-lite/grub-ocultas`. Si una actualización reactiva el original, el filtro se aparta
+(sin entradas duplicadas) hasta que se vuelva a usar la opción. No se pueden ocultar todas las
+entradas de Kubuntu.
+
+Si usaste **Grub Customizer**, la opción 9 → 7 deja `/etc/grub.d` como lo instala Ubuntu: devuelve
+cada script a su nombre, quita sus `*_proxy` (que duplican entradas) y guarda antes una copia
+completa en `/etc/grub.d.antes-de-deshacer-grub-customizer-<fecha>`.
 
 La reparación automática desde Live USB:
 
