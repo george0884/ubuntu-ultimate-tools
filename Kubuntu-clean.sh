@@ -506,16 +506,16 @@ optimize_gpu_menu() {
         echo -e "  ${PURPLE}2)${NC} AMD   - Optimización completa"
         echo -e "  ${PURPLE}3)${NC} Intel - Optimización completa"
         echo -e "  ${PURPLE}4)${NC} Detectar automáticamente y optimizar"
-        echo -e "  ${PURPLE}5)${NC} Volver"
+        echo -e "\n  ${PURPLE}0)${NC} 🔙 Volver"
         echo ""
-        read -r -p "📌 Opción (1-5): " gpu_option
+        read -r -p "📌 Opción (0-4): " gpu_option
 
         case $gpu_option in
             1) optimize_nvidia ;;
             2) optimize_amd ;;
             3) optimize_intel ;;
             4) auto_detect_gpu ;;
-            5) return 0 ;;
+            0) return 0 ;;
             *) echo -e "${RED}❌ Opción inválida${NC}"; sleep 1; continue ;;
         esac
         pause
@@ -633,9 +633,9 @@ optimize_kernel_menu() {
         echo -e "  ${BLUE}3)${NC} Kernel oficial Ubuntu: LTS, HWE o versión específica (recomendado)"
         echo -e "  ${BLUE}4)${NC} Kernel oficial + Livepatch (Ubuntu Pro)"
         echo -e "  ${BLUE}5)${NC} Ajustes avanzados de kernel"
-        echo -e "  ${BLUE}6)${NC} Volver"
+        echo -e "\n  ${BLUE}0)${NC} 🔙 Volver"
         echo ""
-        read -r -p "📌 Opción (1-6): " kernel_option
+        read -r -p "📌 Opción (0-5): " kernel_option
 
         case $kernel_option in
             1) install_liquorix_kernel ;;
@@ -643,7 +643,7 @@ optimize_kernel_menu() {
             3) optimize_standard_kernel ;;
             4) install_standard_livepatch_kernel ;;
             5) advanced_kernel_tweaks ;;
-            6) return 0 ;;
+            0) return 0 ;;
             *) echo -e "${RED}❌ Opción inválida${NC}"; sleep 1; continue ;;
         esac
         pause
@@ -1015,11 +1015,13 @@ choose_official_kernel() {
         echo -e "  ${BLUE}2)${NC} HWE ${YELLOW}(no disponible: solo existe en versiones LTS)${NC}"
     fi
     $allow_specific && echo -e "  ${BLUE}3)${NC} Versión específica (elegir de la lista)"
+    echo -e "\n  ${BLUE}0)${NC} 🔙 Volver"
     echo ""
     read -r -p "📌 Opción: " option
 
     OFFICIAL_VERSION=""
     case $option in
+        0) return 1 ;;
         1) OFFICIAL_KIND="ga" ;;
         2)
             if ! $hwe_available; then
@@ -2710,6 +2712,7 @@ uefi_boot_order_menu() {
 
     echo -e "\n  ${PURPLE}1)${NC} Ponerla primera (siempre)"
     echo -e "  ${PURPLE}2)${NC} Arrancarla solo la próxima vez (p. ej. entrar a Windows una vez)"
+    echo -e "  ${PURPLE}0)${NC} 🔙 Volver sin cambiar nada"
     read -r -p "📌 Opción: " action
     case $action in
         1)
@@ -3079,6 +3082,7 @@ grub_appearance_menu() {
     echo -e "  ${PURPLE}5)${NC} Imagen de fondo (PNG o JPG)"
     echo -e "  ${PURPLE}6)${NC} Quitar la imagen de fondo"
     echo -e "  ${PURPLE}7)${NC} Resolución del menú"
+    echo -e "\n  ${PURPLE}0)${NC} 🔙 Volver"
     echo ""
     read -r -p "📌 Opción: " option
     case $option in
@@ -3106,7 +3110,7 @@ grub_appearance_menu() {
             sudo rm -f /boot/grub/kubuntu-lite-fondo.*
             ;;
         7)
-            echo -e "  1) Automática  2) 1920x1080  3) 1366x768  4) 1280x1024  5) 1024x768"
+            echo -e "  1) Automática  2) 1920x1080  3) 1366x768  4) 1280x1024  5) 1024x768  0) Volver"
             read -r -p "📌 Resolución: " option
             case $option in
                 1) set_grub_var GRUB_GFXMODE auto ;;
@@ -3133,6 +3137,7 @@ grub_kernel_params_menu() {
     echo -e "  ${PURPLE}1)${NC} Ver los mensajes al arrancar (quita 'quiet splash': útil si algo falla)"
     echo -e "  ${PURPLE}2)${NC} Arranque silencioso con logo (pone 'quiet splash', lo normal en Kubuntu)"
     echo -e "  ${PURPLE}3)${NC} Escribirlos a mano"
+    echo -e "\n  ${PURPLE}0)${NC} 🔙 Volver"
     echo ""
     read -r -p "📌 Opción: " option
     case $option in
@@ -3416,9 +3421,9 @@ shutdown_menu() {
     echo -e "\n${YELLOW}📋 Opciones:${NC}\n"
     echo -e "  ${YELLOW}1)${NC} Apagar sistema ahora"
     echo -e "  ${YELLOW}2)${NC} Reiniciar sistema ahora"
-    echo -e "  ${YELLOW}3)${NC} Cancelar"
+    echo -e "\n  ${YELLOW}0)${NC} 🔙 Volver"
     echo ""
-    read -r -p "📌 Opción (1-3): " power_option
+    read -r -p "📌 Opción (0-2): " power_option
 
     case $power_option in
         1)
@@ -3429,7 +3434,7 @@ shutdown_menu() {
             echo -e "\n${GREEN}🟢 Reiniciando el sistema...${NC}"
             sudo reboot
             ;;
-        3)
+        0)
             return 0
             ;;
         *)
@@ -3622,15 +3627,15 @@ remove_shortcuts_menu() {
         echo -e "  ${CYAN}1)${NC} Íconos del escritorio"
         echo -e "  ${CYAN}2)${NC} Aplicaciones fijadas en el panel (barra de tareas)"
         echo -e "  ${CYAN}3)${NC} Restaurar los accesos quitados"
-        echo -e "  ${CYAN}4)${NC} Volver"
+        echo -e "\n  ${CYAN}0)${NC} 🔙 Volver"
         echo ""
-        read -r -p "📌 Opción (1-4): " shortcut_option
+        read -r -p "📌 Opción (0-3): " shortcut_option
 
         case $shortcut_option in
             1) remove_desktop_shortcuts ;;
             2) remove_panel_launchers ;;
             3) restore_desktop_shortcuts; restore_panel_launchers ;;
-            4) return 0 ;;
+            0) return 0 ;;
             *) echo -e "${RED}❌ Opción inválida${NC}"; sleep 1; continue ;;
         esac
         pause
@@ -3846,9 +3851,9 @@ network_menu() {
         echo -e "  ${BLUE}5)${NC} Activar/desactivar ahorro de energía del Wi-Fi (menos latencia y cortes)"
         echo -e "  ${BLUE}6)${NC} Drivers: detectar e instalar los recomendados (GPU, Wi-Fi...)"
         echo -e "  ${BLUE}7)${NC} Actualizar firmware (BIOS, SSD...)"
-        echo -e "  ${BLUE}8)${NC} Volver"
+        echo -e "\n  ${BLUE}0)${NC} 🔙 Volver"
         echo ""
-        read -r -p "📌 Opción (1-8): " net_option
+        read -r -p "📌 Opción (0-7): " net_option
 
         case $net_option in
             1)
@@ -3885,7 +3890,7 @@ network_menu() {
                 ;;
             6) install_recommended_drivers ;;
             7) update_firmware ;;
-            8) return 0 ;;
+            0) return 0 ;;
             *) echo -e "${RED}❌ Opción inválida${NC}"; sleep 1; continue ;;
         esac
         pause
@@ -4058,9 +4063,9 @@ power_menu() {
         echo -e "  ${YELLOW}4)${NC} TLP: ahorro avanzado de batería para portátiles"
         echo -e "  ${YELLOW}5)${NC} Activar/desactivar indexador de archivos Baloo"
         echo -e "  ${YELLOW}6)${NC} Herramientas de juego (GameMode y MangoHud)"
-        echo -e "  ${YELLOW}7)${NC} Volver"
+        echo -e "\n  ${YELLOW}0)${NC} 🔙 Volver"
         echo ""
-        read -r -p "📌 Opción (1-7): " power_option
+        read -r -p "📌 Opción (0-6): " power_option
 
         case $power_option in
             1) set_power_profile performance ;;
@@ -4076,7 +4081,7 @@ power_menu() {
                 fi
                 ;;
             6) install_gaming_tools ;;
-            7) return 0 ;;
+            0) return 0 ;;
             *) echo -e "${RED}❌ Opción inválida${NC}"; sleep 1; continue ;;
         esac
         pause
@@ -4247,7 +4252,7 @@ profiles_menu() {
         i=$((i + 1))
         printf "  ${PURPLE}%s)${NC} %-14s %s\n" "$i" "${entry%%|*}" "${entry#*|}"
     done
-    echo -e "  ${PURPLE}$((i + 1)))${NC} Volver"
+    echo -e "\n  ${PURPLE}0)${NC} 🔙 Volver"
     echo -e "\n${YELLOW}💡 También desde terminal: ./Kubuntu-clean.sh --perfil gaming${NC}\n"
     read -r -p "📌 Opción: " choice
     if [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le ${#PROFILES[@]} ]; then
@@ -4462,10 +4467,10 @@ undo_menu() {
         echo -e "  ${RED}3)${NC} 💾 Desactivar ZRAM"
         echo -e "  ${RED}4)${NC} 🔋 Quitar TLP y volver al selector de energía de Plasma"
         echo -e "  ${RED}5)${NC} 📋 Ver qué AJUSTES están cambiados y restaurarlos todos (no toca programas)"
-        echo -e "  ${RED}6)${NC} ⬅️ Volver"
+        echo -e "\n  ${RED}0)${NC} 🔙 Volver"
         echo -e "\n${YELLOW}ℹ Otros cambios se deshacen en su menú: kernel (4), Kubuntu original (9),${NC}"
         echo -e "${YELLOW}  Snap (11), accesos directos (14), DNS/BBR/Wi-Fi (15), energía y Baloo (16)${NC}\n"
-        read -r -p "📌 Opción (1-6): " undo_option
+        read -r -p "📌 Opción (0-5): " undo_option
 
         case $undo_option in
             1) remove_installed_programs ;;
@@ -4481,7 +4486,7 @@ undo_menu() {
                     echo -e "${YELLOW}ℹ Cancelado: no se cambió nada${NC}"
                 fi
                 ;;
-            6) return 0 ;;
+            0) return 0 ;;
             *) echo -e "${RED}❌ Opción inválida${NC}"; sleep 1; continue ;;
         esac
         pause
@@ -4514,9 +4519,9 @@ main_menu() {
         echo -e "  ${CYAN}16)${NC} 🔋 Energía y rendimiento"
         echo -e "  ${CYAN}17)${NC} 🚀 PERFILES AUTOMÁTICOS (gaming, productividad...)"
         echo -e "  ${CYAN}18)${NC} ↩️  Deshacer optimizaciones / quitar programas"
-        echo -e "  ${CYAN}19)${NC} ❌ Salir"
+        echo -e "\n  ${CYAN} 0)${NC} ❌ Salir"
         echo ""
-        read -r -p "🔢 Opcion (1-19): " option
+        read -r -p "🔢 Opción (0-18): " option
 
         case $option in
             1) select_apps_to_remove ;;
@@ -4537,12 +4542,12 @@ main_menu() {
             16) power_menu ;;
             17) profiles_menu ;;
             18) undo_menu ;;
-            19)
+            0)
                 echo -e "\n${GREEN}✅ ¡Hasta luego!${NC}"
                 exit 0
                 ;;
             *)
-                echo -e "${RED}❌ Opcion invalida${NC}"
+                echo -e "${RED}❌ Opción inválida${NC}"
                 sleep 1
                 ;;
         esac

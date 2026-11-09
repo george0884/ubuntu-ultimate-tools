@@ -108,7 +108,8 @@ chmod +x Kubuntu-clean.sh
 16) 🔋 Energía y rendimiento
 17) 🚀 PERFILES AUTOMÁTICOS (gaming, productividad...)
 18) ↩️  Deshacer optimizaciones / quitar programas
-19) ❌ Salir
+
+ 0) ❌ Salir
 ```
 
 ---
@@ -253,6 +254,10 @@ disponible, se vuelve a la selección escribiendo números.
 - **Desactivar ZRAM** y **quitar TLP** (vuelve el selector de energía de Plasma).
 - **Restaurar todos los ajustes** de una vez, sin desinstalar programas. "Revertir a Kubuntu
   original" (opción 9) también lo hace.
+
+---
+
+En todos los menús y submenús, **0** vuelve al menú anterior (en el principal, sale del script).
 
 ---
 
