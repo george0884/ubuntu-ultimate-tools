@@ -22,6 +22,13 @@ sin importar el sabor. Al iniciar **detecta qué sabor y qué escritorio tienes*
 - 🎮 **Optimizar** GPU, RAM, red, DNS y energía, o aplicar un **perfil automático** (gaming, productividad...)
 - 📦 **Instalar** software popular y la terminal Alacritty con tema Tokyo Night
 - ↩️ **Deshacer** cualquier cambio o **revertir** a tu sabor original
+- 🖥️ **Ver** toda la información del sistema y del hardware, con fastfetch e inxi sin instalar
+
+<div align="center">
+
+![Menú principal](docs/capturas/01-menu-principal.png)
+
+</div>
 
 ---
 
@@ -397,41 +404,17 @@ graph LR
 
 📸 Capturas
 
-Menú de selección de software opcional
+Capturas del script en un Kubuntu 26.04 de ejemplo (el banner muestra el sabor detectado en cada equipo).
 
-```
-┌─────────────────────┤ Instalar Software Adicional ├─────────────────────┐
-│                                                                         │
-│    Usa ESPACIO para seleccionar los programas que QUIERES INSTALAR:     │
-│                                                                         │
-│    (*) filezilla      Cliente FTP/SFTP                                  │
-│    ( ) code           Visual Studio Code (editor)                       │
-│    (*) virtualbox     VirtualBox (máquinas virtuales)                   │
-│    ( ) google-chrome  Google Chrome (navegador)                         │
-│    (*) fastfetch      Fastfetch (info del sistema)                      │
-│                                                                         │
-│    <OK>                              <Cancelar>                         │
-└─────────────────────────────────────────────────────────────────────────┘
-```
-
-Terminal Alacritty con tema Tokyo Night
-
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│  ┌───────────────────────────────────────────────────────────────────┐  │
-│  │  user@ubuntu:~$ fastfetch                                        │  │
-│  │                                                                   │  │
-│  │       .:///:-.                    user@ubuntu                    │  │
-│  │     .:////////:-.                 OS: Ubuntu 24.04                │  │
-│  │    -////////////////:.            Kernel: 6.8.0-xx               │  │
-│  │   `:////////////////:.            Shell: bash 5.2.15              │  │
-│  │    :+///////////////+`            DE: KDE Plasma 6.0.4            │  │
-│  │   `-/+++++++++++++/.              Theme: Tokyo Night              │  │
-│  │    `.-://///:-.`                  Terminal: Alacritty             │  │
-│  │                                                                   │  │
-│  └───────────────────────────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────────────────┘
-```
+| | |
+|---|---|
+| **Eliminar aplicaciones** (con casillas)<br>![Eliminar aplicaciones](docs/capturas/02-eliminar-apps.png) | **Software opcional**<br>![Software opcional](docs/capturas/08-software-opcional.png) |
+| **GPU**<br>![GPU](docs/capturas/03-gpu.png) | **Kernel**<br>![Kernel](docs/capturas/04-kernel.png) |
+| **Arranque: GRUB y EFI**<br>![Arranque](docs/capturas/05-arranque-grub.png) | **Personalizar menú de GRUB**<br>![Personalizar GRUB](docs/capturas/06-personalizar-grub.png) |
+| **Ocultar entradas de GRUB**<br>![Ocultar entradas](docs/capturas/07-ocultar-entradas-grub.png) | **Accesos directos**<br>![Accesos directos](docs/capturas/09-accesos-directos.png) |
+| **Red, DNS y drivers**<br>![Red](docs/capturas/10-red-dns-drivers.png) | **Energía y rendimiento**<br>![Energía](docs/capturas/11-energia.png) |
+| **Perfiles automáticos**<br>![Perfiles](docs/capturas/12-perfiles.png) | **Deshacer optimizaciones**<br>![Deshacer](docs/capturas/13-deshacer.png) |
+| **Información del sistema**<br>![Información](docs/capturas/14-informacion-sistema.png) | **Resumen rápido**<br>![Resumen](docs/capturas/15-resumen-sistema.png) |
 
 ---
 

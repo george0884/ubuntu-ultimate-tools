@@ -244,6 +244,7 @@ roottext=white,black
 # Lista con casillas: barra espaciadora para marcar, Enter para aceptar.
 # Entradas "paquete|descripción" o "paquete|descripción|ON" (casilla ya marcada);
 # deja lo elegido en CHOSEN. Devuelve 1 si se cancela.
+# Con CHECKLIST_NOTAGS=true no se muestra la columna de nombres internos.
 # Si no hay whiptail (o no es una terminal interactiva) se elige escribiendo números.
 checklist_select() {
     local title="$1" text="$2"
@@ -272,6 +273,7 @@ checklist_select() {
         [ "$w" -gt 90 ] && w=90
         out=$(NEWT_COLORS="${NEWT_COLORS:-$WHIPTAIL_COLORS}" \
             whiptail --title "$title" --ok-button "Aceptar" --cancel-button "Cancelar" \
+            ${CHECKLIST_NOTAGS:+--notags} \
             --checklist "$text\n\nEspacio: marcar/desmarcar · Flechas: moverse · Enter: aceptar" \
             "$h" "$w" "$lh" "${args[@]}" 3>&1 1>&2 2>&3) || return 1
         read -r -a CHOSEN <<< "$(tr -d '"' <<< "$out")"
@@ -283,7 +285,11 @@ checklist_select() {
         i=$((i + 1))
         status=" "
         [[ "$entry" == *"|ON" ]] && { status="x"; entry=${entry%|ON}; }
-        printf "  ${CYAN}[%2s]${NC} [%s] %-22s - %s\n" "$i" "$status" "${entry%%|*}" "${entry#*|}"
+        if [ -n "$CHECKLIST_NOTAGS" ]; then
+            printf "  ${CYAN}[%2s]${NC} [%s] %s\n" "$i" "$status" "${entry#*|}"
+        else
+            printf "  ${CYAN}[%2s]${NC} [%s] %-22s - %s\n" "$i" "$status" "${entry%%|*}" "${entry#*|}"
+        fi
     done
     echo -e "\n${CYAN}([x] = marcado ahora; escribe todos los que quieras dejar marcados; Enter = cancelar)${NC}"
     read -r -p "🔢 Números separados por espacio: " input
@@ -3296,7 +3302,8 @@ grub_hide_entries() {
         tags+=("e$i|$line")
     done
 
-    checklist_select "Ocultar entradas" "Marca TODAS las entradas que quieres OCULTAR del menú (las ya ocultas aparecen marcadas)" \
+    CHECKLIST_NOTAGS=true checklist_select "Ocultar entradas" \
+        "Marca TODAS las entradas que quieres OCULTAR del menú (las ya ocultas aparecen marcadas)" \
         "${entries[@]}" || return 0
     clear
     local chosen=" ${CHOSEN[*]} " tag new_hidden=() scripts=() script title_only kubuntu_left=0 kubuntu_total=0
@@ -3633,7 +3640,7 @@ grub_customize_menu() {
         echo -e "  ${PURPLE}5)${NC} Parámetros de arranque del kernel"
         echo -e "  ${PURPLE}6)${NC} Restaurar el menú original (deshace los cambios de este script)"
         echo -e "  ${PURPLE}7)${NC} Deshacer los cambios de Grub Customizer"
-        echo -e "  ${PURPLE}0)${NC} 🔙 Volver"
+        echo -e "\n  ${PURPLE}0)${NC} 🔙 Volver"
         echo -e "\n${YELLOW}ℹ Qué arranca por defecto y cuánto espera el menú: opción 6 del menú de GRUB${NC}\n"
         read -r -p "📌 Opción (0-7): " custom_option
         case $custom_option in
