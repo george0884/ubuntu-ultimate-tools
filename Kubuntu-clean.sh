@@ -2776,6 +2776,9 @@ regen_grub() {
     if [ -f "$GRUB_OTHERS_FIRST" ] && grep -q '^exec sh /etc/grub.d/30_os-prober$' "$GRUB_OTHERS_FIRST"; then
         write_others_first_script
     fi
+    # El filtro de entradas ocultas se reescribe siempre con la versión actual del script
+    # (la primera dejaba bloques "if" vacíos y update-grub fallaba)
+    [ -f "$GRUB_FILTER_AWK" ] && write_grub_filter
     echo -e "${PURPLE}🔄 Regenerando el menú de GRUB...${NC}"
     local out rc
     out=$(sudo update-grub 2>&1)
@@ -2833,7 +2836,9 @@ write_grub_filter() {
     sudo tee "$GRUB_FILTER_AWK" > /dev/null << 'EOF'
 # Kubuntu Lite: quita del menú de GRUB las entradas cuyo título está en la lista
 # (líneas "script|título"). Una entrada ocupa desde su línea "menuentry" hasta la
-# llave que la cierra.
+# llave que la cierra. En su lugar queda "true" (no hace nada): si la entrada
+# estaba sola dentro de un "if ... then ... fi", un bloque vacío es un error de
+# sintaxis y update-grub falla.
 BEGIN {
     while ((getline line < list) > 0) {
         sub(/^[^|]*\|/, "", line)
@@ -2847,6 +2852,8 @@ skip > 0 { skip += gsub(/\{/, "{") - gsub(/\}/, "}"); next }
     sub(/^[ \t]*menuentry[ \t]+['"]/, "", t)
     sub(/['"].*/, "", t)
     if (t in hide) {
+        match($0, /^[ \t]*/)
+        print substr($0, 1, RLENGTH) "true"
         skip = gsub(/\{/, "{") - gsub(/\}/, "}")
         if (skip < 0) skip = 0
         next
@@ -2954,6 +2961,8 @@ grub_hide_entries() {
         return 1
     fi
 
+    local previous=""
+    [ -f "$GRUB_HIDDEN_LIST" ] && previous=$(cat "$GRUB_HIDDEN_LIST")
     write_grub_filter
     printf '%s\n' "${new_hidden[@]}" | sed '/^$/d' | sort -u | sudo tee "$GRUB_HIDDEN_LIST" > /dev/null
     # Filtro solo en los scripts que tienen algo oculto
@@ -2971,7 +2980,15 @@ grub_hide_entries() {
     # "Otros sistemas primero" llama a os-prober por su cuenta: también usa el filtro
     [ -f "$GRUB_OTHERS_FIRST" ] && write_others_first_script
 
-    regen_grub && log_success "Menú actualizado: ${#new_hidden[@]} entradas ocultas"
+    if regen_grub; then
+        log_success "Menú actualizado: ${#new_hidden[@]} entradas ocultas"
+        return 0
+    fi
+    # Seguro: si el menú nuevo no se pudo generar, se vuelve a la lista anterior
+    log_warning "Se deshace este último cambio para que el menú siga funcionando"
+    printf '%s\n' "$previous" | sed '/^$/d' | sudo tee "$GRUB_HIDDEN_LIST" > /dev/null
+    regen_grub && log_success "Menú de arranque como estaba antes de este cambio"
+    return 1
 }
 
 write_others_first_script() {
