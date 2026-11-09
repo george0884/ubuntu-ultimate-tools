@@ -239,21 +239,24 @@ roottext=white,black
 '
 
 # Lista con casillas: barra espaciadora para marcar, Enter para aceptar.
-# Entradas "paquete|descripción"; deja lo elegido en CHOSEN. Devuelve 1 si se cancela.
+# Entradas "paquete|descripción" o "paquete|descripción|ON" (casilla ya marcada);
+# deja lo elegido en CHOSEN. Devuelve 1 si se cancela.
 # Si no hay whiptail (o no es una terminal interactiva) se elige escribiendo números.
 checklist_select() {
     local title="$1" text="$2"
     shift 2
-    local entries=("$@") args=() entry name desc i=0 input num
+    local entries=("$@") args=() entry name desc status i=0 input num
     CHOSEN=()
 
     if command -v whiptail &> /dev/null && [ -t 0 ] && [ -t 1 ]; then
         for entry in "${entries[@]}"; do
+            status=OFF
+            [[ "$entry" == *"|ON" ]] && { status=ON; entry=${entry%|ON}; }
             name=${entry%%|*}
             desc=${entry#*|}
             # Sin el emoji inicial: whiptail calcula mal su ancho y descuadra la lista
             [[ "$desc" == *" "* ]] && [[ "${desc%% *}" != *[[:alnum:]]* ]] && desc=${desc#* }
-            args+=("$name" "$desc" OFF)
+            args+=("$name" "$desc" "$status")
         done
         local h w lh max_h out
         # Alto justo para la lista (sin hueco vacío), limitado al tamaño de la terminal
@@ -275,9 +278,11 @@ checklist_select() {
     echo -e "${CYAN}$text${NC}\n"
     for entry in "${entries[@]}"; do
         i=$((i + 1))
-        printf "  ${CYAN}[%2s]${NC} %-22s - %s\n" "$i" "${entry%%|*}" "${entry#*|}"
+        status=" "
+        [[ "$entry" == *"|ON" ]] && { status="x"; entry=${entry%|ON}; }
+        printf "  ${CYAN}[%2s]${NC} [%s] %-22s - %s\n" "$i" "$status" "${entry%%|*}" "${entry#*|}"
     done
-    echo ""
+    echo -e "\n${CYAN}([x] = marcado ahora; escribe todos los que quieras dejar marcados)${NC}"
     read -r -p "🔢 Números separados por espacio: " input
     for num in $input; do
         if [[ "$num" =~ ^[0-9]+$ ]] && [ "$num" -ge 1 ] && [ "$num" -le ${#entries[@]} ]; then
@@ -742,8 +747,16 @@ remove_kernel_family() {
 }
 
 # Cambia GRUB_DEFAULT en /etc/default/grub
+GRUB_DEFAULT_BACKUP="/etc/default/grub.kubuntu-lite.orig"
+
+# Antes del primer cambio guarda /etc/default/grub para poder volver al original
+backup_grub_config() {
+    [ -f "$GRUB_DEFAULT_BACKUP" ] || sudo cp -p /etc/default/grub "$GRUB_DEFAULT_BACKUP"
+}
+
 set_grub_default() {
     local value="$1"
+    backup_grub_config
     if grep -q '^GRUB_DEFAULT=' /etc/default/grub; then
         sudo sed -i "s|^GRUB_DEFAULT=.*|GRUB_DEFAULT=\"$value\"|" /etc/default/grub
     else
@@ -2017,153 +2030,185 @@ grub_repair_menu() {
         clear
         echo -e "${PURPLE}${BOLD}"
         echo "╔══════════════════════════════════════════════════════════════════╗"
-        echo "║                    🔧 REPARACIÓN DE GRUB                         ║"
+        echo "║                    🔧 ARRANQUE: GRUB Y EFI                       ║"
         echo "╚══════════════════════════════════════════════════════════════════╝"
         echo -e "${NC}"
 
-        is_live_session && echo -e "${GREEN}💿 Sesión Live USB detectada: usa la opción 4${NC}"
-        echo -e "\n${PURPLE}📋 Con el sistema arrancado:${NC}\n"
-        echo -e "  ${PURPLE}1)${NC} 📊 DIAGNÓSTICO - Ver discos y particiones"
-        echo -e "  ${PURPLE}2)${NC} 🔧 REPARACIÓN NORMAL - Reinstalar GRUB"
-        echo -e "  ${PURPLE}3)${NC} 💿 INSTALAR GRUB EN DISCO - Disco específico"
-        echo -e "\n${PURPLE}📋 Cuando el sistema NO arranca:${NC}\n"
-        echo -e "  ${PURPLE}4)${NC} 🚑 REPARAR DESDE LIVE USB - Automático (chroot)"
-        echo -e "  ${PURPLE}5)${NC} 📖 GUÍA 'grub>' - Arrancar a mano desde el prompt de GRUB"
-        echo -e "  ${PURPLE}6)${NC} 📖 GUÍA 'grub rescue>' - Recuperar el menú de GRUB"
-        echo -e "  ${PURPLE}7)${NC} 📖 GUÍA LIVE USB - Reparación manual con comandos"
-        echo -e "\n${PURPLE}📋 Menú de arranque y EFI:${NC}\n"
-        echo -e "  ${PURPLE} 8)${NC} 🗂️ SISTEMA POR DEFECTO - Qué arranca solo y cuánto espera el menú"
-        echo -e "  ${PURPLE} 9)${NC} 🪟 OTROS SISTEMAS - Detectar Windows y otras distros (os-prober)"
-        echo -e "  ${PURPLE}10)${NC} 🔢 ORDEN DE ARRANQUE UEFI - Qué arranca primero / solo la próxima vez"
-        echo -e "  ${PURPLE}11)${NC} 🩺 PARTICIÓN EFI - Verificar, reparar y ver espacio libre"
-        echo -e "  ${PURPLE}12)${NC} 🧰 HERRAMIENTAS - Grub Customizer, Boot-Repair, rEFInd"
-        echo -e "  ${PURPLE}13)${NC} ⬅️ Volver al menú principal"
+        is_live_session && echo -e "${GREEN}💿 Sesión Live USB detectada: usa la opción 10${NC}"
+        echo -e "${PURPLE}🔍 Diagnóstico:${NC}"
+        echo -e "  ${PURPLE} 1)${NC} 📊 DIAGNÓSTICO - Estado del arranque (y guardar un informe)"
+        echo -e "\n${PURPLE}🔧 Reparar (con el sistema arrancado):${NC}"
+        echo -e "  ${PURPLE} 2)${NC} 🔧 REPARACIÓN RÁPIDA - Reinstalar GRUB y regenerar el menú"
+        echo -e "  ${PURPLE} 3)${NC} 🧰 REPARACIÓN COMPLETA - EFI + paquetes de GRUB + reinstalación + orden UEFI"
+        echo -e "  ${PURPLE} 4)${NC} 💿 INSTALAR GRUB EN OTRO DISCO - Solo modo BIOS"
+        echo -e "  ${PURPLE} 5)${NC} 🩺 PARTICIÓN EFI - Verificar, reparar y ver espacio libre"
+        echo -e "\n${PURPLE}🎨 Configurar el menú de arranque:${NC}"
+        echo -e "  ${PURPLE} 6)${NC} 📂 SISTEMA POR DEFECTO - Qué arranca solo y cuánto espera el menú"
+        echo -e "  ${PURPLE} 7)${NC} 🪟 OTROS SISTEMAS - Detectar Windows y otras distros"
+        echo -e "  ${PURPLE} 8)${NC} 🔢 ORDEN DE ARRANQUE UEFI - Qué arranca primero / solo la próxima vez"
+        echo -e "  ${PURPLE} 9)${NC} 🎨 PERSONALIZAR MENÚ - Ocultar entradas, orden, colores, fondo, parámetros"
+        echo -e "\n${PURPLE}🚑 Cuando el sistema NO arranca:${NC}"
+        echo -e "  ${PURPLE}10)${NC} 🚑 REPARAR DESDE LIVE USB - Automático (chroot)"
+        echo -e "  ${PURPLE}11)${NC} 📖 GUÍA 'grub>' - Arrancar a mano desde el prompt de GRUB"
+        echo -e "  ${PURPLE}12)${NC} 📖 GUÍA 'grub rescue>' - Recuperar el menú de GRUB"
+        echo -e "  ${PURPLE}13)${NC} 📖 GUÍA LIVE USB - Reparación manual con comandos"
+        echo -e "\n  ${PURPLE} 0)${NC} 🔙 Volver al menú principal"
         echo ""
-        read -r -p "📌 Opcion (1-13): " grub_option
+        read -r -p "📌 Opción (0-13): " grub_option
 
         case $grub_option in
             1) grub_diagnostic ;;
             2) grub_normal_repair ;;
-            3) grub_reinstall_to_disk ;;
-            4) grub_live_repair ;;
-            5) grub_prompt_guide ;;
-            6) grub_rescue_guide ;;
-            7) grub_live_guide ;;
-            8) grub_default_entry_menu; pause ;;
-            9) grub_os_prober_toggle; pause ;;
-            10) uefi_boot_order_menu; pause ;;
-            11) esp_check_repair; pause ;;
-            12) boot_tools_menu ;;
-            13) return 0 ;;
-            *) echo -e "${RED}❌ Opcion invalida${NC}"; sleep 1 ;;
+            3) grub_full_repair; pause ;;
+            4) grub_reinstall_to_disk ;;
+            5) esp_check_repair; pause ;;
+            6) grub_default_entry_menu; pause ;;
+            7) grub_os_prober_toggle; pause ;;
+            8) uefi_boot_order_menu; pause ;;
+            9) grub_customize_menu ;;
+            10) grub_live_repair ;;
+            11) grub_prompt_guide ;;
+            12) grub_rescue_guide ;;
+            13) grub_live_guide ;;
+            0) return 0 ;;
+            *) echo -e "${RED}❌ Opción inválida${NC}"; sleep 1 ;;
         esac
     done
 }
 
-grub_diagnostic() {
-    clear
-    echo -e "${PURPLE}${BOLD}"
-    echo "╔══════════════════════════════════════════════════════════════════╗"
-    echo "║                    📊 DIAGNOSTICO DEL SISTEMA                    ║"
-    echo "╚══════════════════════════════════════════════════════════════════╝"
-    echo -e "${NC}\n"
-
-    echo -e "${PURPLE}[*] MODO DE ARRANQUE:${NC}"
+# Informe del arranque en texto plano (se muestra y se guarda para compartirlo)
+boot_report() {
+    echo "== Fecha: $(date '+%Y-%m-%d %H:%M')"
+    echo "== Sistema: $(os_release_value PRETTY_NAME) · kernel en uso $(uname -r)"
+    echo ""
+    echo "== MODO DE ARRANQUE"
     if [ -d /sys/firmware/efi ]; then
-        echo -e "  ${GREEN}✓ UEFI (EFI) detectado${NC}"
+        echo "  UEFI · Secure Boot: $(secure_boot_enabled && echo activado || echo desactivado)"
     else
-        echo -e "  ${GREEN}✓ BIOS (Legacy) detectado${NC}"
+        echo "  BIOS (Legacy)"
     fi
-
-    echo -e "\n${PURPLE}[*] DISCOS DETECTADOS:${NC}"
-    lsblk -d -o NAME,SIZE,MODEL 2>/dev/null | grep -v "loop" | head -10 | sed 's/^/  /'
-
-    echo -e "\n${PURPLE}[*] PARTICIONES:${NC}"
-    lsblk -o NAME,SIZE,FSTYPE,MOUNTPOINT 2>/dev/null | grep -v "loop" | sed 's/^/  /'
-
-    echo -e "\n${PURPLE}[*] GRUB INSTALADO:${NC}"
+    echo ""
+    echo "== DISCOS Y PARTICIONES"
+    lsblk -o NAME,SIZE,FSTYPE,LABEL,MOUNTPOINTS 2>/dev/null | grep -v loop | sed 's/^/  /'
+    echo ""
+    echo "== ESPACIO EN /boot"
+    df -h /boot 2>/dev/null | sed 's/^/  /'
+    echo ""
+    echo "== KERNELS INSTALADOS"
+    installed_pkgs 'linux-image-[0-9]*' | sed 's/^linux-image-/  /' | sort -V
+    echo ""
+    echo "== GRUB"
     if command -v grub-install &> /dev/null; then
-        echo -e "  ${GREEN}✓ $(grub-install --version | head -1)${NC}"
+        echo "  $(grub-install --version 2>/dev/null | head -1)"
     else
-        echo -e "  ${RED}✗ GRUB NO esta instalado${NC}"
+        echo "  ✗ GRUB NO está instalado"
     fi
+    grep -E '^GRUB_(DEFAULT|TIMEOUT|TIMEOUT_STYLE|SAVEDEFAULT|DISABLE_OS_PROBER|DISABLE_RECOVERY|CMDLINE_LINUX_DEFAULT|GFXMODE|BACKGROUND)=' \
+        /etc/default/grub 2>/dev/null | sed 's/^/  /'
+    echo "  Entrada guardada: $(grub-editenv /boot/grub/grubenv list 2>/dev/null | sed -n 's/^saved_entry=//p')"
+    [ -d /etc/grub.d/proxifiedScripts ] && echo "  ⚠ Configuración modificada por Grub Customizer"
+    echo ""
+    echo "== MENÚ DE ARRANQUE"
+    grub_menu_entries | cut -d'|' -f2 | sed 's/^/  • /'
+    if [ -d /sys/firmware/efi ]; then
+        echo ""
+        echo "== ENTRADAS UEFI"
+        LC_ALL=C efibootmgr 2>/dev/null | sed 's/\t.*//; s/^/  /'
+        echo ""
+        echo "== PARTICIÓN EFI"
+        if findmnt /boot/efi > /dev/null 2>&1; then
+            df -h /boot/efi | sed 's/^/  /'
+            echo "  Carpetas: $(sudo ls /boot/efi/EFI 2>/dev/null | tr '\n' ' ')"
+        else
+            echo "  ✗ No hay partición EFI montada en /boot/efi"
+        fi
+    fi
+}
 
+grub_diagnostic() {
+    grub_guide_header "📊 DIAGNÓSTICO DEL ARRANQUE"
+    local report="$HOME/diagnostico-arranque.txt"
+    boot_report | tee "$report"
+    echo -e "\n${GREEN}💾 Informe guardado en: $report${NC}"
+    echo -e "${YELLOW}   (sirve para pedir ayuda: compártelo si algo no arranca)${NC}"
     echo -e "\n${YELLOW}📌 Presiona Enter para volver...${NC}"
     read -r
 }
 
 grub_normal_repair() {
-    clear
-    echo -e "${PURPLE}${BOLD}"
-    echo "╔══════════════════════════════════════════════════════════════════╗"
-    echo "║                    🔧 REPARACIÓN NORMAL DE GRUB                  ║"
-    echo "╚══════════════════════════════════════════════════════════════════╝"
-    echo -e "${NC}\n"
-
+    grub_guide_header "🔧 REPARACIÓN RÁPIDA DE GRUB"
+    echo -e "${PURPLE}Reinstala GRUB y regenera el menú. Si no alcanza, usa la REPARACIÓN COMPLETA (3).${NC}\n"
     if ! confirm "${PURPLE}¿Reparar GRUB ahora?${NC}"; then
         return 0
     fi
 
+    local ok=true
     if [ -d /sys/firmware/efi ]; then
         echo -e "${PURPLE}🔄 Reparando GRUB en modo UEFI...${NC}"
-        sudo grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=ubuntu --recheck
+        if ! findmnt /boot/efi > /dev/null 2>&1; then
+            log_error "La partición EFI no está montada en /boot/efi (revisa la opción 5)"
+            ok=false
+        else
+            run_visible "Falló grub-install" sudo grub-install --target=x86_64-efi --efi-directory=/boot/efi \
+                --bootloader-id=ubuntu --recheck || ok=false
+        fi
     else
         local root_dev boot_disk
         root_dev=$(findmnt -no SOURCE /)
         # Sube por la jerarquía (LVM/LUKS/partición) hasta el disco físico
         boot_disk=$(lsblk -rnso NAME,TYPE "$root_dev" 2>/dev/null | awk '$2 == "disk" {print $1; exit}')
         if [ -z "$boot_disk" ]; then
-            log_error "No se pudo detectar el disco del sistema; usa la opción 3"
-            read -r
-            return 1
+            log_error "No se pudo detectar el disco del sistema; usa la opción 4"
+            ok=false
+        else
+            echo -e "${PURPLE}🔄 Reparando GRUB en modo BIOS (disco: /dev/$boot_disk)...${NC}"
+            run_visible "Falló grub-install" sudo grub-install --target=i386-pc --recheck "/dev/$boot_disk" || ok=false
         fi
-        echo -e "${PURPLE}🔄 Reparando GRUB en modo BIOS (disco: /dev/$boot_disk)...${NC}"
-        sudo grub-install --target=i386-pc "/dev/$boot_disk"
     fi
 
     echo -e "${PURPLE}🔄 Regenerando configuración...${NC}"
-    sudo update-grub
+    run_visible "Falló update-grub" sudo update-grub || ok=false
 
-    echo -e "${GREEN}✓ GRUB reparado correctamente${NC}"
+    if $ok; then
+        log_success "GRUB reparado correctamente"
+    else
+        log_error "La reparación tuvo errores: prueba la REPARACIÓN COMPLETA (opción 3)"
+    fi
     echo -e "\n${YELLOW}📌 Presiona Enter para volver...${NC}"
     read -r
 }
 
 grub_reinstall_to_disk() {
-    clear
-    echo -e "${PURPLE}${BOLD}"
-    echo "╔══════════════════════════════════════════════════════════════════╗"
-    echo "║                    💿 INSTALAR GRUB EN DISCO                      ║"
-    echo "╚══════════════════════════════════════════════════════════════════╝"
-    echo -e "${NC}\n"
+    grub_guide_header "💿 INSTALAR GRUB EN OTRO DISCO"
+    if [ -d /sys/firmware/efi ]; then
+        echo -e "${YELLOW}ℹ Este equipo arranca en modo UEFI: GRUB no se instala en un disco sino en la${NC}"
+        echo -e "${YELLOW}  partición EFI. Usa la REPARACIÓN RÁPIDA (2) o la COMPLETA (3).${NC}"
+        echo -e "\n${YELLOW}📌 Presiona Enter para volver...${NC}"
+        read -r
+        return 0
+    fi
 
     echo -e "${PURPLE}[*] Discos disponibles:${NC}"
-    lsblk -d -o NAME,SIZE,MODEL 2>/dev/null | grep -v "loop" | sed 's/^/  /'
-
+    lsblk -dpno NAME,SIZE,MODEL 2>/dev/null | grep -v "loop" | sed 's/^/  /'
     echo ""
-    read -r -p "📌 Ingresa el disco (ej: /dev/sda): " target_disk
+    read -r -p "📌 Disco (ej: /dev/sda; el DISCO, no una partición como /dev/sda1): " target_disk
 
-    if [ ! -b "$target_disk" ]; then
-        echo -e "${RED}❌ Error: El disco $target_disk no existe${NC}"
+    if [ ! -b "$target_disk" ] || [ "$(lsblk -dno TYPE "$target_disk" 2>/dev/null)" != "disk" ]; then
+        log_error "$target_disk no es un disco"
+        echo -e "\n${YELLOW}📌 Presiona Enter para volver...${NC}"
         read -r
         return 1
     fi
 
-    echo -e "\n${RED}⚠ Esto instalara GRUB en $target_disk${NC}"
+    echo -e "\n${RED}⚠ Esto instalará GRUB en $target_disk${NC}"
     if ! confirm "${PURPLE}¿Confirmar?${NC}"; then
         return 0
     fi
 
-    if [ -d /sys/firmware/efi ]; then
-        echo -e "${PURPLE}🔄 Instalando GRUB en modo UEFI...${NC}"
-        sudo grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=ubuntu --recheck "$target_disk"
-    else
-        echo -e "${PURPLE}🔄 Instalando GRUB en modo BIOS...${NC}"
-        sudo grub-install --target=i386-pc "$target_disk"
+    if run_visible "Falló grub-install" sudo grub-install --target=i386-pc --recheck "$target_disk" \
+        && run_visible "Falló update-grub" sudo update-grub; then
+        log_success "GRUB instalado en $target_disk"
     fi
-
-    sudo update-grub
-    echo -e "${GREEN}✓ GRUB instalado en $target_disk${NC}"
     echo -e "\n${YELLOW}📌 Presiona Enter para volver...${NC}"
     read -r
 }
@@ -2208,7 +2253,7 @@ PASO 2: CARGAR MÓDULOS Y ARRANCAR
     quita "/boot" de las rutas: linux /vmlinuz ... e initrd /initrd.img
 
 PASO 3: YA DENTRO DEL SISTEMA (reparar de forma permanente)
-  Ejecuta este script → opción 12 → 2 (REPARACIÓN NORMAL), o a mano:
+  Ejecuta este script → opción 12 → 2 (REPARACIÓN RÁPIDA), o a mano:
     sudo grub-install /dev/sda        (en UEFI basta: sudo grub-install)
     sudo update-grub
   (update-grub es lo mismo que "grub-mkconfig -o /boot/grub/grub.cfg")
@@ -2240,14 +2285,14 @@ PASO 3: CARGAR GRUB NORMALMENTE
     insmod normal
     normal
 
-  Aparecerá el menú de GRUB (o el prompt "grub>": sigue la guía 5).
+  Aparecerá el menú de GRUB (o el prompt "grub>": sigue la guía 11).
 
 PASO 4: UNA VEZ EN EL SISTEMA
-  Ejecuta este script → opción 12 → 2 (REPARACIÓN NORMAL).
+  Ejecuta este script → opción 12 → 2 (REPARACIÓN RÁPIDA).
 
 SI "insmod normal" FALLA
   Los archivos de GRUB están dañados: arranca desde un USB de Kubuntu
-  y usa la opción 4 (reparación automática desde Live USB).
+  y usa la opción 10 (reparación automática desde Live USB).
 EOF
     echo -e "\n${YELLOW}📌 Presiona Enter para volver...${NC}"
     read -r
@@ -2257,7 +2302,7 @@ grub_live_guide() {
     grub_guide_header "📖 REPARACIÓN MANUAL DESDE LIVE USB"
     cat << 'EOF'
 Arranca desde un USB de Kubuntu ("Probar Kubuntu") y abre Konsole.
-La opción 4 de este menú hace todo esto automáticamente.
+La opción 10 de este menú hace todo esto automáticamente.
 
 1. IDENTIFICAR LA PARTICIÓN DEL SISTEMA (y la EFI, si el equipo es UEFI)
     sudo fdisk -l            (o: lsblk -f)
@@ -2357,7 +2402,7 @@ grub_live_repair() {
         log_warning "Esto no parece una sesión Live USB"
         echo -e "${YELLOW}  Esta opción es para cuando Kubuntu no arranca: inicia desde un USB de Kubuntu,${NC}"
         echo -e "${YELLOW}  elige 'Probar Kubuntu', abre Konsole y ejecuta este script.${NC}"
-        echo -e "${YELLOW}  Si el sistema arranca, usa la opción 2 (REPARACIÓN NORMAL).${NC}\n"
+        echo -e "${YELLOW}  Si el sistema arranca, usa la opción 2 (RÁPIDA) o 3 (COMPLETA).${NC}\n"
         if ! confirm "${PURPLE}¿Continuar de todos modos?${NC}"; then
             return 0
         fi
@@ -2508,9 +2553,14 @@ grub_live_repair() {
 
 # Cambia (o agrega) una variable de /etc/default/grub
 set_grub_var() {
-    local key="$1" value="$2"
+    local key="$1" value="$2" escaped
+    backup_grub_config
+    # Escapa los caracteres especiales del reemplazo de sed (\ & |)
+    escaped=${value//\\/\\\\}
+    escaped=${escaped//&/\\&}
+    escaped=${escaped//|/\\|}
     if grep -q "^${key}=" /etc/default/grub; then
-        sudo sed -i "s|^${key}=.*|${key}=${value}|" /etc/default/grub
+        sudo sed -i "s|^${key}=.*|${key}=${escaped}|" /etc/default/grub
     else
         echo "${key}=${value}" | sudo tee -a /etc/default/grub > /dev/null
     fi
@@ -2534,7 +2584,7 @@ grub_menu_entries() {
         /^submenu / { s = $0; next }
         /^}/ { s = ""; next }
         /menuentry / && tolower($0) !~ /recovery|recuperaci/ { print s "\037" $0 }
-    ' "$cfg")
+    ' "$cfg" 2>/dev/null)
 }
 
 grub_default_entry_menu() {
@@ -2584,11 +2634,18 @@ grub_default_entry_menu() {
     fi
 }
 
+GRUB_OTHERS_FIRST="/etc/grub.d/09_kubuntu_lite_otros_primero"
+
+others_visible() {
+    grep -q '^GRUB_DISABLE_OS_PROBER=false' /etc/default/grub || [ -f "$GRUB_OTHERS_FIRST" ]
+}
+
 grub_os_prober_toggle() {
     grub_guide_header "🪟 DETECTAR OTROS SISTEMAS"
-    if grep -q '^GRUB_DISABLE_OS_PROBER=false' /etc/default/grub; then
+    if others_visible; then
         echo -e "${GREEN}✓ La detección de otros sistemas ya está activada${NC}\n"
         if confirm "${PURPLE}¿Desactivarla? (los otros sistemas desaparecerán del menú)${NC}"; then
+            sudo rm -f "$GRUB_OTHERS_FIRST"
             set_grub_var GRUB_DISABLE_OS_PROBER true
             run_visible "Falló update-grub" sudo update-grub && log_success "Detección de otros sistemas desactivada"
         fi
@@ -2610,7 +2667,7 @@ grub_os_prober_toggle() {
         log_warning "No se encontró otro sistema (si está en otro disco, conéctalo y vuelve a intentarlo)"
     fi
     run_visible "Falló update-grub" sudo update-grub && log_success "Detección activada"
-    echo -e "${YELLOW}ℹ Si el menú no aparece al encender, usa la opción 8 para darle unos segundos${NC}"
+    echo -e "${YELLOW}ℹ Si el menú no aparece al encender, usa la opción 6 para darle unos segundos${NC}"
 }
 
 uefi_boot_order_menu() {
@@ -2684,6 +2741,12 @@ esp_check_repair() {
     echo -e "\n${YELLOW}ℹ Windows con 'inicio rápido' o un apagado brusco pueden dañarla y dejar GRUB sin arrancar${NC}\n"
     confirm "${PURPLE}¿Verificar y reparar la partición EFI? (se desmonta unos segundos)${NC}" || return 0
 
+    esp_fsck "$dev"
+}
+
+# Desmonta la partición EFI, la verifica con fsck.vfat y la vuelve a montar
+esp_fsck() {
+    local dev="$1"
     command -v fsck.vfat &> /dev/null || { apt_update; apt_install dosfstools || return 1; }
     run "No se pudo desmontar /boot/efi (¿la está usando otro programa?)" sudo umount /boot/efi || return 1
     sudo fsck.vfat -a "$dev" 2>&1 | tee -a "$LOG_FILE"
@@ -2693,104 +2756,365 @@ esp_check_repair() {
     case $rc in
         0) log_success "Partición EFI sin errores" ;;
         1) log_success "Partición EFI reparada" ;;
-        *) log_error "Quedaron errores en la partición EFI (código $rc). Prueba Boot-Repair (opción 12 → 2)" ;;
+        *) log_error "Quedaron errores en la partición EFI (código $rc)"; return 1 ;;
     esac
 }
 
 # ------------------------------------------------------------
-# Herramientas gráficas de arranque
+# Personalizar el menú de GRUB (sin programas externos)
 # ------------------------------------------------------------
 
-# Instala un paquete desde los repositorios o, si no está, desde su PPA
-install_from_repo_or_ppa() {
-    local pkg="$1" ppa="$2"
-    apt_update
-    if [ -z "$(available_pkgs "$pkg")" ]; then
-        echo -e "${PURPLE}📦 Agregando el repositorio $ppa...${NC}"
-        run "No se pudo agregar $ppa" sudo add-apt-repository -y "$ppa" || return 1
-        apt_update force
-        if [ -z "$(available_pkgs "$pkg")" ]; then
-            log_error "$pkg no está disponible para esta versión de Ubuntu"
-            run "No se pudo quitar $ppa" sudo add-apt-repository --remove -y "$ppa"
-            return 1
-        fi
+GRUB_LOOK_FILE="/etc/grub.d/42_kubuntu_lite_apariencia"
+
+regen_grub() {
+    echo -e "${PURPLE}🔄 Regenerando el menú de GRUB...${NC}"
+    run "Falló update-grub" sudo update-grub
+}
+
+# Script de GRUB que no se puede ocultar si no está instalado
+grub_script_hidden() {
+    [ -f "$1" ] && [ ! -x "$1" ]
+}
+
+grub_hide_entries() {
+    local entries=() memtest="/etc/grub.d/20_memtest86+" uefi="/etc/grub.d/30_uefi-firmware"
+    on() { if "$@"; then echo "|ON"; fi; }
+    entries+=("recuperacion|Modo de recuperación de cada kernel$(on grep -q '^GRUB_DISABLE_RECOVERY=true' /etc/default/grub)")
+    entries+=("otros|Otros sistemas (Windows, otras distros)$(on bash -c '! grep -q "^GRUB_DISABLE_OS_PROBER=false" /etc/default/grub && [ ! -f '"$GRUB_OTHERS_FIRST"' ]')")
+    [ -f "$memtest" ] && entries+=("memtest|Prueba de memoria (memtest86+)$(on grub_script_hidden "$memtest")")
+    [ -f "$uefi" ] && entries+=("uefi|Configuración de la UEFI (entrar a la BIOS)$(on grub_script_hidden "$uefi")")
+
+    checklist_select "Ocultar entradas" "Marca las entradas que quieres OCULTAR del menú de GRUB" "${entries[@]}" || return 0
+    clear
+    local hide=" ${CHOSEN[*]} "
+
+    if [[ "$hide" == *" recuperacion "* ]]; then set_grub_var GRUB_DISABLE_RECOVERY true; else set_grub_var GRUB_DISABLE_RECOVERY false; fi
+    if [[ "$hide" == *" otros "* ]]; then
+        sudo rm -f "$GRUB_OTHERS_FIRST"
+        set_grub_var GRUB_DISABLE_OS_PROBER true
+    elif ! others_visible; then
+        command -v os-prober &> /dev/null || { apt_update; apt_install os-prober || return 1; }
+        set_grub_var GRUB_DISABLE_OS_PROBER false
     fi
-    apt_install_recorded "$pkg"
-}
-
-launch_gui() {
-    echo -e "${PURPLE}🚀 Abriendo $1...${NC}"
-    setsid "$1" >> "$LOG_FILE" 2>&1 < /dev/null &
-}
-
-install_grub_customizer() {
-    echo -e "${YELLOW}ℹ Grub Customizer reemplaza los scripts de /etc/grub.d por los suyos.${NC}"
-    echo -e "${YELLOW}  Para deshacerlo: en Grub Customizer → Archivo → Revertir a la configuración original.${NC}\n"
-    command -v grub-customizer &> /dev/null || install_from_repo_or_ppa grub-customizer ppa:danielrichter2007/grub-customizer || return 1
-    launch_gui grub-customizer
-}
-
-install_boot_repair() {
-    echo -e "${YELLOW}ℹ Boot-Repair repara el arranque (GRUB y EFI) con un clic; sus opciones avanzadas${NC}"
-    echo -e "${YELLOW}  permiten elegir el sistema por defecto y la partición EFI. También funciona desde Live USB.${NC}\n"
-    command -v boot-repair &> /dev/null || install_from_repo_or_ppa boot-repair ppa:yannubuntu/boot-repair || return 1
-    launch_gui boot-repair
-}
-
-install_refind() {
-    if [ ! -d /sys/firmware/efi ]; then
-        log_error "rEFInd solo funciona en equipos UEFI (este arranca en modo BIOS)"
-        return 1
+    # Para desactivar un script de GRUB se le quita el permiso de ejecución
+    # (método que recomienda GRUB; las actualizaciones lo respetan)
+    if [ -f "$memtest" ]; then
+        if [[ "$hide" == *" memtest "* ]]; then sudo chmod -x "$memtest"; else sudo chmod +x "$memtest"; fi
     fi
-    echo -e "${YELLOW}ℹ rEFInd es otro gestor de arranque: muestra todos los sistemas con íconos y queda primero.${NC}"
-    echo -e "${YELLOW}  GRUB sigue instalado: se puede volver con la opción 10 o quitando rEFInd desde aquí.${NC}"
-    if secure_boot_enabled; then
-        log_warning "Secure Boot está activado: rEFInd puede no arrancar (la UEFI saltará a la siguiente entrada)"
+    if [ -f "$uefi" ]; then
+        if [[ "$hide" == *" uefi "* ]]; then sudo chmod -x "$uefi"; else sudo chmod +x "$uefi"; fi
     fi
+    regen_grub && log_success "Menú actualizado (ocultas: ${CHOSEN[*]:-ninguna})"
+}
+
+# Otros sistemas antes que Kubuntu: un script que corre antes que 10_linux llama a
+# 30_os-prober, y el original queda desactivado con GRUB_DISABLE_OS_PROBER=true.
+grub_others_first_toggle() {
+    if [ -f "$GRUB_OTHERS_FIRST" ]; then
+        confirm "${PURPLE}Los otros sistemas ya aparecen primero. ¿Volver a mostrar Kubuntu primero?${NC}" || return 0
+        sudo rm -f "$GRUB_OTHERS_FIRST"
+        set_grub_var GRUB_DISABLE_OS_PROBER false
+        regen_grub && log_success "Kubuntu vuelve a estar primero en el menú"
+        return
+    fi
+    confirm "${PURPLE}¿Mostrar Windows y los otros sistemas ANTES que Kubuntu en el menú?${NC}" || return 0
+    command -v os-prober &> /dev/null || { apt_update; apt_install os-prober || return 1; }
+    sudo tee "$GRUB_OTHERS_FIRST" > /dev/null << 'EOF'
+#!/bin/sh
+# Kubuntu Lite: muestra los otros sistemas (Windows, otras distros) antes que Kubuntu
+GRUB_DISABLE_OS_PROBER=false
+export GRUB_DISABLE_OS_PROBER
+exec sh /etc/grub.d/30_os-prober
+EOF
+    sudo chmod +x "$GRUB_OTHERS_FIRST"
+    set_grub_var GRUB_DISABLE_OS_PROBER true
+    # Que el orden no cambie lo que arranca solo: Kubuntu sigue siendo el predeterminado
+    ensure_grub_saved
+    [ $? -eq 1 ] && return 1
+    regen_grub || return 1
+    local saved kubuntu
+    saved=$(sudo grub-editenv list 2>/dev/null | sed -n 's/^saved_entry=//p')
+    if [ -z "$saved" ] || [ "$saved" = "0" ]; then
+        kubuntu=$(grub_menu_entries | grep -m1 '^gnulinux-simple-' | cut -d'|' -f1)
+        [ -n "$kubuntu" ] && sudo grub-set-default "$kubuntu"
+    fi
+    log_success "Los otros sistemas aparecen primero (Kubuntu sigue arrancando por defecto; cámbialo con la opción 6)"
+}
+
+grub_remember_last_toggle() {
+    if grep -q '^GRUB_SAVEDEFAULT=true' /etc/default/grub; then
+        confirm "${PURPLE}GRUB recuerda el último sistema elegido. ¿Desactivarlo?${NC}" || return 0
+        set_grub_var GRUB_SAVEDEFAULT false
+        regen_grub && log_success "GRUB arrancará siempre la entrada por defecto (opción 6)"
+        return
+    fi
+    confirm "${PURPLE}¿Que GRUB arranque solo el último sistema que elegiste en el menú?${NC}" || return 0
+    ensure_grub_saved
+    [ $? -eq 1 ] && return 1
+    set_grub_var GRUB_SAVEDEFAULT true
+    regen_grub && log_success "GRUB recordará el último sistema elegido"
+}
+
+# Colores del menú (nombres de color de GRUB: texto/fondo; "black" deja ver el fondo)
+grub_set_colors() {
+    local color_text="$1" color_selected="$2"
+    sudo tee "$GRUB_LOOK_FILE" > /dev/null << EOF
+#!/bin/sh
+# Kubuntu Lite: colores del menú de GRUB
+cat << 'COLORES'
+set color_normal=light-gray/black
+set menu_color_normal=$color_text
+set menu_color_highlight=$color_selected
+COLORES
+EOF
+    sudo chmod +x "$GRUB_LOOK_FILE"
+}
+
+grub_appearance_menu() {
+    local option file ext
+    echo -e "  ${PURPLE}1)${NC} Colores Tokyo Night (azul y lila)"
+    echo -e "  ${PURPLE}2)${NC} Colores alto contraste (blanco y negro)"
+    echo -e "  ${PURPLE}3)${NC} Colores verde terminal"
+    echo -e "  ${PURPLE}4)${NC} Colores originales de Ubuntu"
+    echo -e "  ${PURPLE}5)${NC} Imagen de fondo (PNG o JPG)"
+    echo -e "  ${PURPLE}6)${NC} Quitar la imagen de fondo"
+    echo -e "  ${PURPLE}7)${NC} Resolución del menú"
     echo ""
-    confirm "${PURPLE}¿Instalar rEFInd?${NC}" || return 0
-    # Instalarlo en la partición EFI sin preguntar
-    echo "refind refind/install_to_esp boolean true" | sudo debconf-set-selections
-    apt_update
-    apt_install_recorded refind && log_success "rEFInd instalado: se verá al reiniciar"
+    read -r -p "📌 Opción: " option
+    case $option in
+        1) grub_set_colors light-blue/black black/light-magenta ;;
+        2) grub_set_colors white/black black/white ;;
+        3) grub_set_colors light-green/black black/light-green ;;
+        4) sudo rm -f "$GRUB_LOOK_FILE" ;;
+        5)
+            read -r -p "🖼 Ruta de la imagen (puedes arrastrarla desde Dolphin): " file
+            file=${file//\'/}
+            file=${file/#\~/$HOME}
+            ext=$(tr '[:upper:]' '[:lower:]' <<< "${file##*.}")
+            if [ ! -f "$file" ] || [[ ! "$ext" =~ ^(png|jpg|jpeg|tga)$ ]]; then
+                log_error "No es una imagen PNG, JPG o TGA: $file"
+                return 1
+            fi
+            # Dentro de /boot/grub, donde GRUB la puede leer al arrancar
+            sudo rm -f /boot/grub/kubuntu-lite-fondo.*
+            sudo cp "$file" "/boot/grub/kubuntu-lite-fondo.$ext"
+            set_grub_var GRUB_BACKGROUND "\"/boot/grub/kubuntu-lite-fondo.$ext\""
+            ;;
+        6)
+            backup_grub_config
+            sudo sed -i '/^GRUB_BACKGROUND=/d' /etc/default/grub
+            sudo rm -f /boot/grub/kubuntu-lite-fondo.*
+            ;;
+        7)
+            echo -e "  1) Automática  2) 1920x1080  3) 1366x768  4) 1280x1024  5) 1024x768"
+            read -r -p "📌 Resolución: " option
+            case $option in
+                1) set_grub_var GRUB_GFXMODE auto ;;
+                2) set_grub_var GRUB_GFXMODE 1920x1080 ;;
+                3) set_grub_var GRUB_GFXMODE 1366x768 ;;
+                4) set_grub_var GRUB_GFXMODE 1280x1024 ;;
+                5) set_grub_var GRUB_GFXMODE 1024x768 ;;
+                *) echo -e "${YELLOW}ℹ No se cambió nada${NC}"; return 0 ;;
+            esac
+            ;;
+        *) echo -e "${YELLOW}ℹ No se cambió nada${NC}"; return 0 ;;
+    esac
+    regen_grub && log_success "Apariencia del menú actualizada (se ve al reiniciar)"
+    if grep -q '^GRUB_TIMEOUT_STYLE=hidden' /etc/default/grub; then
+        echo -e "${YELLOW}ℹ El menú está oculto al arrancar: dale unos segundos con la opción 6 para verlo${NC}"
+    fi
 }
 
-remove_refind() {
-    if ! installed_pkgs refind | grep -qx refind; then
-        echo -e "  ${GREEN}✓ rEFInd no está instalado${NC}"
+# Parámetros con los que arranca el kernel (GRUB_CMDLINE_LINUX_DEFAULT)
+grub_kernel_params_menu() {
+    local current option params word
+    current=$(sed -n 's/^GRUB_CMDLINE_LINUX_DEFAULT=//p' /etc/default/grub | tr -d '"')
+    echo -e "${PURPLE}⚙ Parámetros actuales:${NC} ${current:-(ninguno)}\n"
+    echo -e "  ${PURPLE}1)${NC} Ver los mensajes al arrancar (quita 'quiet splash': útil si algo falla)"
+    echo -e "  ${PURPLE}2)${NC} Arranque silencioso con logo (pone 'quiet splash', lo normal en Kubuntu)"
+    echo -e "  ${PURPLE}3)${NC} Escribirlos a mano"
+    echo ""
+    read -r -p "📌 Opción: " option
+    case $option in
+        1|2)
+            params=""
+            for word in $current; do
+                [[ "$word" == "quiet" || "$word" == "splash" ]] || params+="$word "
+            done
+            [ "$option" = 2 ] && params="quiet splash $params"
+            ;;
+        3)
+            read -r -e -i "$current" -p "✏ Parámetros: " params
+            ;;
+        *) echo -e "${YELLOW}ℹ No se cambió nada${NC}"; return 0 ;;
+    esac
+    params=$(xargs <<< "$params")
+    set_grub_var GRUB_CMDLINE_LINUX_DEFAULT "\"$params\""
+    regen_grub && log_success "Parámetros del kernel: ${params:-(ninguno)} (se aplican al reiniciar)"
+}
+
+grub_restore_original() {
+    if [ ! -f "$GRUB_DEFAULT_BACKUP" ] && [ ! -f "$GRUB_LOOK_FILE" ] && [ ! -f "$GRUB_OTHERS_FIRST" ]; then
+        echo -e "${GREEN}✓ El menú de GRUB no tiene cambios del script${NC}"
         return 0
     fi
-    confirm "${PURPLE}¿Quitar rEFInd y volver a arrancar con GRUB?${NC}" || return 0
-    apt_purge refind && forget_installed refind
-    # Su entrada UEFI y sus archivos en la partición EFI no se borran con el paquete
-    local num
-    for num in $(LC_ALL=C efibootmgr 2>/dev/null | sed -n 's/^Boot\([0-9A-Fa-f]\{4\}\)\*\{0,1\} rEFInd.*/\1/p'); do
-        run "No se pudo quitar la entrada UEFI de rEFInd" sudo efibootmgr -b "$num" -B
+    confirm "${PURPLE}¿Volver el menú de GRUB a como estaba antes de usar el script?${NC}" || return 0
+    if [ -f "$GRUB_DEFAULT_BACKUP" ]; then
+        sudo cp -p "$GRUB_DEFAULT_BACKUP" /etc/default/grub && sudo rm -f "$GRUB_DEFAULT_BACKUP"
+    fi
+    sudo rm -f "$GRUB_LOOK_FILE" "$GRUB_OTHERS_FIRST" /boot/grub/kubuntu-lite-fondo.*
+    local script
+    for script in /etc/grub.d/20_memtest86+ /etc/grub.d/30_uefi-firmware; do
+        [ -f "$script" ] && sudo chmod +x "$script"
     done
-    sudo rm -rf /boot/efi/EFI/refind
-    run_visible "No se pudo reinstalar GRUB" sudo grub-install && log_success "rEFInd quitado: arranca GRUB"
+    regen_grub && run "No se pudo fijar el kernel por defecto" sudo grub-set-default 0 \
+        && log_success "Menú de GRUB restaurado"
 }
 
-boot_tools_menu() {
+grub_customize_menu() {
+    local entry
     while true; do
-        grub_guide_header "🧰 HERRAMIENTAS DE ARRANQUE"
-        echo -e "  ${PURPLE}1)${NC} Grub Customizer - Editar el menú: ordenar, renombrar, ocultar, fondo"
-        echo -e "  ${PURPLE}2)${NC} Boot-Repair - Reparación automática de GRUB y EFI"
-        echo -e "  ${PURPLE}3)${NC} rEFInd - Gestor de arranque gráfico con todos los sistemas (UEFI)"
-        echo -e "  ${PURPLE}4)${NC} Quitar rEFInd y volver a GRUB"
-        echo -e "  ${PURPLE}5)${NC} ⬅️ Volver"
-        echo -e "\n${YELLOW}ℹ Grub Customizer y Boot-Repair se pueden desinstalar desde la opción 18 del menú principal${NC}\n"
-        read -r -p "📌 Opción (1-5): " tool_option
-        case $tool_option in
-            1) install_grub_customizer ;;
-            2) install_boot_repair ;;
-            3) install_refind ;;
-            4) remove_refind ;;
-            5) return 0 ;;
+        grub_guide_header "🎨 PERSONALIZAR MENÚ DE GRUB"
+        echo -e "${PURPLE}📋 Así se ve ahora el menú:${NC}"
+        while IFS= read -r entry; do
+            echo "   • ${entry#*|}"
+        done < <(grub_menu_entries)
+        if [ -d /etc/grub.d/proxifiedScripts ]; then
+            echo -e "\n${YELLOW}⚠ Grub Customizer modificó este menú: sus cambios pueden pisar los de aquí.${NC}"
+            echo -e "${YELLOW}  Para evitarlo, revierte su configuración y desinstálalo (opción 18).${NC}"
+        fi
+        echo ""
+        echo -e "  ${PURPLE}1)${NC} Ocultar o mostrar entradas (recuperación, otros sistemas, memtest, UEFI)"
+        echo -e "  ${PURPLE}2)${NC} Orden: otros sistemas (Windows...) antes o después de Kubuntu"
+        echo -e "  ${PURPLE}3)${NC} Recordar el último sistema elegido"
+        echo -e "  ${PURPLE}4)${NC} Apariencia: colores, imagen de fondo y resolución"
+        echo -e "  ${PURPLE}5)${NC} Parámetros de arranque del kernel"
+        echo -e "  ${PURPLE}6)${NC} Restaurar el menú original"
+        echo -e "  ${PURPLE}7)${NC} ⬅️ Volver"
+        echo -e "\n${YELLOW}ℹ Qué arranca por defecto y cuánto espera el menú: opción 6 del menú de GRUB${NC}\n"
+        read -r -p "📌 Opción (1-7): " custom_option
+        case $custom_option in
+            1) grub_hide_entries ;;
+            2) grub_others_first_toggle ;;
+            3) grub_remember_last_toggle ;;
+            4) grub_appearance_menu ;;
+            5) grub_kernel_params_menu ;;
+            6) grub_restore_original ;;
+            7) return 0 ;;
             *) echo -e "${RED}❌ Opción inválida${NC}"; sleep 1; continue ;;
         esac
         pause
     done
+}
+
+# ------------------------------------------------------------
+# Reparación completa (sin programas externos)
+# ------------------------------------------------------------
+
+# Quita rEFInd (versiones anteriores del script podían instalarlo) y vuelve a GRUB
+remove_refind() {
+    apt_purge refind && forget_installed refind
+    # Su entrada UEFI y sus archivos en la partición EFI no se borran con el paquete
+    local num
+    for num in $(LC_ALL=C efibootmgr 2>/dev/null | sed -n 's/^Boot\([0-9A-Fa-f]\{4\}\)\*\{0,1\} \{1,\}rEFInd.*/\1/p'); do
+        run "No se pudo quitar la entrada UEFI de rEFInd" sudo efibootmgr -b "$num" -B
+    done
+    sudo rm -rf /boot/efi/EFI/refind
+    log_success "rEFInd quitado"
+}
+
+# Pone primera la entrada UEFI de Ubuntu/Kubuntu
+uefi_ubuntu_first() {
+    local out order num new_order
+    out=$(LC_ALL=C efibootmgr 2>/dev/null)
+    order=$(sed -n 's/^BootOrder: //p' <<< "$out")
+    num=$(sed -n 's/^Boot\([0-9A-Fa-f]\{4\}\)\*\{0,1\} \{1,\}[Uu]buntu.*/\1/p' <<< "$out" | head -1)
+    [ -n "$num" ] || return 0
+    [ "${order%%,*}" = "$num" ] && return 0
+    new_order=$(tr ',' '\n' <<< "$order" | grep -vix "$num" | paste -sd, -)
+    run "No se pudo cambiar el orden de arranque" sudo efibootmgr -o "$num${new_order:+,$new_order}"
+}
+
+grub_full_repair() {
+    grub_guide_header "🛠️ REPARACIÓN COMPLETA DEL ARRANQUE"
+    local uefi=false disk step=0 total=4 failed=()
+    [ -d /sys/firmware/efi ] && { uefi=true; total=6; }
+
+    echo -e "${PURPLE}📋 Se hará, en orden:${NC}"
+    $uefi && echo -e "  • Verificar y reparar la partición EFI"
+    echo -e "  • Reinstalar los paquetes de GRUB$($uefi && echo " (y shim para Secure Boot)")"
+    echo -e "  • Reinstalar GRUB en $($uefi && echo "la partición EFI" || echo "el disco del sistema")"
+    echo -e "  • Regenerar el menú de arranque"
+    $uefi && echo -e "  • Poner Kubuntu primero en el orden de arranque UEFI"
+    echo -e "  • Comprobar el resultado"
+    echo -e "\n${YELLOW}ℹ Para un sistema que NO arranca, usa la opción 10 desde un Live USB${NC}\n"
+    confirm "${PURPLE}¿Empezar la reparación completa?${NC}" || return 0
+
+    if installed_pkgs refind | grep -qx refind \
+        && confirm "${PURPLE}rEFInd está instalado y puede tapar a GRUB. ¿Quitarlo?${NC}"; then
+        remove_refind
+    fi
+
+    if $uefi; then
+        step=$((step + 1)); echo -e "\n${PURPLE}[$step/$total] Partición EFI...${NC}"
+        if findmnt /boot/efi > /dev/null 2>&1; then
+            esp_fsck "$(findmnt -no SOURCE /boot/efi)" || failed+=("partición EFI")
+        else
+            log_error "No hay partición EFI montada en /boot/efi"
+            failed+=("partición EFI")
+        fi
+    fi
+
+    step=$((step + 1)); echo -e "\n${PURPLE}[$step/$total] Reinstalando los paquetes de GRUB...${NC}"
+    local pkgs=(grub-pc)
+    $uefi && pkgs=(grub-efi-amd64 grub-efi-amd64-signed shim-signed)
+    apt_update
+    run_visible "No se pudieron reinstalar los paquetes de GRUB" \
+        sudo env DEBIAN_FRONTEND=noninteractive apt-get "${APT_OPTS[@]}" install --reinstall "${pkgs[@]}" \
+        || failed+=("paquetes de GRUB")
+
+    step=$((step + 1)); echo -e "\n${PURPLE}[$step/$total] Reinstalando GRUB...${NC}"
+    if $uefi; then
+        run_visible "Falló grub-install" sudo grub-install --target=x86_64-efi --efi-directory=/boot/efi \
+            --bootloader-id=ubuntu --recheck || failed+=("grub-install")
+    else
+        disk=$(lsblk -rnso NAME,TYPE "$(findmnt -no SOURCE /)" 2>/dev/null | awk '$2 == "disk" {print $1; exit}')
+        if [ -n "$disk" ]; then
+            run_visible "Falló grub-install" sudo grub-install --target=i386-pc --recheck "/dev/$disk" || failed+=("grub-install")
+        else
+            log_error "No se pudo detectar el disco del sistema (usa la opción 4)"
+            failed+=("grub-install")
+        fi
+    fi
+
+    step=$((step + 1)); echo -e "\n${PURPLE}[$step/$total] Regenerando el menú...${NC}"
+    run_visible "Falló update-grub" sudo update-grub || failed+=("update-grub")
+
+    if $uefi; then
+        step=$((step + 1)); echo -e "\n${PURPLE}[$step/$total] Orden de arranque UEFI...${NC}"
+        uefi_ubuntu_first || failed+=("orden UEFI")
+    fi
+
+    step=$((step + 1)); echo -e "\n${PURPLE}[$step/$total] Comprobando...${NC}"
+    local entry_count
+    entry_count=$(grub_menu_entries | wc -l)
+    if [ -s /boot/grub/grub.cfg ] && [ "$entry_count" -gt 0 ]; then
+        log_success "El menú de GRUB tiene $entry_count entradas"
+    else
+        log_error "El menú de GRUB quedó vacío"
+        failed+=("comprobación")
+    fi
+    if $uefi && ! LC_ALL=C efibootmgr 2>/dev/null | grep -qi 'ubuntu'; then
+        log_error "No hay entrada UEFI de Ubuntu/Kubuntu"
+        failed+=("entrada UEFI")
+    fi
+
+    echo ""
+    if [ ${#failed[@]} -eq 0 ]; then
+        log_success "Reparación completa terminada sin errores"
+    else
+        log_error "Pasos con problemas: ${failed[*]}. Detalles en: $LOG_FILE"
+    fi
 }
 
 # ============================================================
@@ -3899,7 +4223,7 @@ main_menu() {
         echo -e "  ${CYAN} 9)${NC} ↩️  Revertir a Kubuntu original"
         echo -e "  ${CYAN}10)${NC} ☢️  ELIMINACION NUCLEAR DE SNAP"
         echo -e "  ${CYAN}11)${NC} 🔄 REINSTALAR SNAP"
-        echo -e "  ${CYAN}12)${NC} 🔧 REPARAR GRUB (BIOS/EFI/Rescue)"
+        echo -e "  ${CYAN}12)${NC} 🔧 ARRANQUE: reparar y personalizar GRUB/EFI"
         echo -e "  ${CYAN}13)${NC} 🔌 Apagar / Reiniciar sistema"
         echo -e "  ${CYAN}14)${NC} 🧹 Quitar accesos directos (escritorio y panel)"
         echo -e "  ${CYAN}15)${NC} 🌐 Red, DNS y drivers"
