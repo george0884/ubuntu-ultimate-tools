@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # ============================================================
-# Script: Kubuntu Lite Ultimate
+# Script: Ubuntu Ultimate Tools
 # Descripción: Transforma Kubuntu en un sistema minimalista
 #              con optimizaciones de rendimiento extremo
 # Versión: 7.0 - MENÚS UNIFORMES Y ESTÉTICA CUIDADA
@@ -14,10 +14,10 @@
 # CONFIGURACIÓN INICIAL
 # ============================================================
 
-LOG_FILE="$HOME/kubuntu-lite.log"
+LOG_FILE="$HOME/ubuntu-ultimate-tools.log"
 
 # Estado guardado entre ejecuciones (lo usa "Revertir")
-STATE_DIR="$HOME/.local/share/kubuntu-lite"
+STATE_DIR="$HOME/.local/share/ubuntu-ultimate-tools"
 REMOVED_LIST="$STATE_DIR/paquetes-eliminados.txt"
 INSTALLED_LIST="$STATE_DIR/paquetes-instalados.txt"
 SHORTCUTS_BACKUP="$STATE_DIR/accesos-directos"
@@ -56,7 +56,7 @@ print_header() {
     clear
     echo -e "${CYAN}${BOLD}"
     echo "╔══════════════════════════════════════════════════════════════════╗"
-    echo "║                    KUBUNTU LITE ULTIMATE                         ║"
+    echo "║                    UBUNTU ULTIMATE TOOLS                         ║"
     echo "║              Transformación y Optimización Extrema               ║"
     echo "╚══════════════════════════════════════════════════════════════════╝"
     echo -e "${NC}"
@@ -200,7 +200,8 @@ kubuntu_desktop_pkgs() {
         | awk '$1 ~ /^\|?(Depends|Recommends):$/ && $2 !~ /^</ {print $2}' | sort -u
 }
 
-SYSCTL_FILE="/etc/sysctl.d/99-kubuntu-lite.conf"
+SYSCTL_FILE="/etc/sysctl.d/99-ubuntu-ultimate-tools.conf"
+BBR_MODULES_FILE="/etc/modules-load.d/ubuntu-ultimate-tools-bbr.conf"
 
 # Aplica un parámetro sysctl y lo deja persistente sin duplicar líneas
 set_sysctl() {
@@ -749,7 +750,7 @@ remove_kernel_family() {
 }
 
 # Cambia GRUB_DEFAULT en /etc/default/grub
-GRUB_DEFAULT_BACKUP="/etc/default/grub.kubuntu-lite.orig"
+GRUB_DEFAULT_BACKUP="/etc/default/grub.ubuntu-ultimate-tools.orig"
 
 # Antes del primer cambio guarda /etc/default/grub para poder volver al original
 backup_grub_config() {
@@ -2638,7 +2639,7 @@ grub_default_entry_menu() {
     fi
 }
 
-GRUB_OTHERS_FIRST="/etc/grub.d/09_kubuntu_lite_otros_primero"
+GRUB_OTHERS_FIRST="/etc/grub.d/09_ubuntu_ultimate_tools_otros_primero"
 
 others_visible() {
     grep -q '^GRUB_DISABLE_OS_PROBER=false' /etc/default/grub || [ -f "$GRUB_OTHERS_FIRST" ]
@@ -2769,7 +2770,7 @@ esp_fsck() {
 # Personalizar el menú de GRUB (sin programas externos)
 # ------------------------------------------------------------
 
-GRUB_LOOK_FILE="/etc/grub.d/42_kubuntu_lite_apariencia"
+GRUB_LOOK_FILE="/etc/grub.d/42_ubuntu_ultimate_tools_apariencia"
 
 # Regenera grub.cfg. Si falla, muestra el error en pantalla: grub-mkconfig solo
 # reemplaza el menú cuando termina bien, así que el anterior sigue intacto.
@@ -2828,16 +2829,16 @@ grub_scripts_chmod() {
 
 # --- Ocultar entradas sueltas -------------------------------------------------
 # Cada script de GRUB con entradas ocultas se desactiva (sin permiso de ejecución) y
-# en su lugar corre "<script>_kubuntu_lite", que lo ejecuta y filtra su salida con
+# en su lugar corre "<script>_ubuntu_ultimate_tools", que lo ejecuta y filtra su salida con
 # grub-filtro.awk según la lista de títulos ocultos.
-KL_ETC="/etc/kubuntu-lite"
-GRUB_HIDDEN_LIST="$KL_ETC/grub-ocultas"
-GRUB_FILTER_AWK="$KL_ETC/grub-filtro.awk"
+UUT_ETC="/etc/ubuntu-ultimate-tools"
+GRUB_HIDDEN_LIST="$UUT_ETC/grub-ocultas"
+GRUB_FILTER_AWK="$UUT_ETC/grub-filtro.awk"
 
 write_grub_filter() {
-    sudo install -d -m 0755 "$KL_ETC"
+    sudo install -d -m 0755 "$UUT_ETC"
     sudo tee "$GRUB_FILTER_AWK" > /dev/null << 'EOF'
-# Kubuntu Lite: quita del menú de GRUB las entradas cuyo título está en la lista
+# Ubuntu Ultimate Tools: quita del menú de GRUB las entradas cuyo título está en la lista
 # (líneas "script|título"). Una entrada ocupa desde su línea "menuentry" hasta la
 # llave que la cierra. En su lugar queda "true" (no hace nada): si la entrada
 # estaba sola dentro de un "if ... then ... fi", un bloque vacío es un error de
@@ -2869,22 +2870,22 @@ EOF
 # Envoltorio que reemplaza a un script de GRUB y filtra sus entradas
 write_grub_filter_wrapper() {
     local orig="$1"
-    sudo tee "${orig}_kubuntu_lite" > /dev/null << EOF
+    sudo tee "${orig}_ubuntu_ultimate_tools" > /dev/null << EOF
 #!/bin/sh
-# Kubuntu Lite: genera las entradas de ${orig##*/} sin las ocultas (ver $GRUB_HIDDEN_LIST)
+# Ubuntu Ultimate Tools: genera las entradas de ${orig##*/} sin las ocultas (ver $GRUB_HIDDEN_LIST)
 ORIG='$orig'
 [ -f "\$ORIG" ] || exit 0
 # Si una actualización volvió a activar el original, este filtro se aparta (sin duplicados)
 [ -x "\$ORIG" ] && exit 0
 sh "\$ORIG" | awk -v list='$GRUB_HIDDEN_LIST' -f '$GRUB_FILTER_AWK'
 EOF
-    sudo chmod +x "${orig}_kubuntu_lite"
+    sudo chmod +x "${orig}_ubuntu_ultimate_tools"
     sudo chmod -x "$orig"
 }
 
 remove_grub_filter_wrapper() {
     local orig="$1"
-    sudo rm -f "${orig}_kubuntu_lite"
+    sudo rm -f "${orig}_ubuntu_ultimate_tools"
     [ -f "$orig" ] && sudo chmod +x "$orig"
 }
 
@@ -2927,7 +2928,7 @@ grub_hide_entries() {
 
     # Cada entrada del menú actual (las de recuperación van en su grupo)
     while IFS='|' read -r src shown title; do
-        [[ "$src" == *kubuntu_lite_otros_primero* || "$src" == *_kubuntu_lite ]] && src=${src%_kubuntu_lite}
+        [[ "$src" == *ubuntu_ultimate_tools_otros_primero* || "$src" == *_ubuntu_ultimate_tools ]] && src=${src%_ubuntu_ultimate_tools}
         [[ "${title,,}" == *recovery* || "${title,,}" == *recuperaci* ]] && continue
         i=$((i + 1))
         entries+=("e$i|$shown")
@@ -2971,13 +2972,13 @@ grub_hide_entries() {
     # Filtro solo en los scripts que tienen algo oculto
     mapfile -t scripts < <(printf '%s\n' "${new_hidden[@]}" | cut -d'|' -f1 | sed '/^$/d' | sort -u)
     local wrapper orig
-    for wrapper in /etc/grub.d/*_kubuntu_lite; do
+    for wrapper in /etc/grub.d/*_ubuntu_ultimate_tools; do
         [ -f "$wrapper" ] || continue
-        orig=${wrapper%_kubuntu_lite}
+        orig=${wrapper%_ubuntu_ultimate_tools}
         printf '%s\n' "${scripts[@]}" | grep -qxF "$orig" || remove_grub_filter_wrapper "$orig"
     done
     for script in "${scripts[@]}"; do
-        [[ "$script" == *kubuntu_lite_otros_primero ]] && continue
+        [[ "$script" == *ubuntu_ultimate_tools_otros_primero ]] && continue
         [ -f "$script" ] && write_grub_filter_wrapper "$script"
     done
     # "Otros sistemas primero" llama a os-prober por su cuenta: también usa el filtro
@@ -2997,15 +2998,15 @@ grub_hide_entries() {
 write_others_first_script() {
     sudo tee "$GRUB_OTHERS_FIRST" > /dev/null << 'EOF'
 #!/bin/sh
-# Kubuntu Lite: muestra los otros sistemas (Windows, otras distros) antes que Kubuntu.
+# Ubuntu Ultimate Tools: muestra los otros sistemas (Windows, otras distros) antes que Kubuntu.
 # El script de os-prober puede estar en su sitio o movido por Grub Customizer; si no
 # está, no hace nada (nunca debe hacer fallar update-grub).
 GRUB_DISABLE_OS_PROBER=false
 export GRUB_DISABLE_OS_PROBER
 for script in /etc/grub.d/30_os-prober /etc/grub.d/proxifiedScripts/os-prober; do
     if [ -f "$script" ]; then
-        if [ -f /etc/kubuntu-lite/grub-filtro.awk ]; then
-            sh "$script" | awk -v list=/etc/kubuntu-lite/grub-ocultas -f /etc/kubuntu-lite/grub-filtro.awk
+        if [ -f /etc/ubuntu-ultimate-tools/grub-filtro.awk ]; then
+            sh "$script" | awk -v list=/etc/ubuntu-ultimate-tools/grub-ocultas -f /etc/ubuntu-ultimate-tools/grub-filtro.awk
         else
             sh "$script"
         fi
@@ -3063,7 +3064,7 @@ grub_set_colors() {
     local color_text="$1" color_selected="$2"
     sudo tee "$GRUB_LOOK_FILE" > /dev/null << EOF
 #!/bin/sh
-# Kubuntu Lite: colores del menú de GRUB
+# Ubuntu Ultimate Tools: colores del menú de GRUB
 cat << 'COLORES'
 set color_normal=light-gray/black
 set menu_color_normal=$color_text
@@ -3100,14 +3101,14 @@ grub_appearance_menu() {
                 return 1
             fi
             # Dentro de /boot/grub, donde GRUB la puede leer al arrancar
-            sudo rm -f /boot/grub/kubuntu-lite-fondo.*
-            sudo cp "$file" "/boot/grub/kubuntu-lite-fondo.$ext"
-            set_grub_var GRUB_BACKGROUND "\"/boot/grub/kubuntu-lite-fondo.$ext\""
+            sudo rm -f /boot/grub/ubuntu-ultimate-tools-fondo.*
+            sudo cp "$file" "/boot/grub/ubuntu-ultimate-tools-fondo.$ext"
+            set_grub_var GRUB_BACKGROUND "\"/boot/grub/ubuntu-ultimate-tools-fondo.$ext\""
             ;;
         6)
             backup_grub_config
             sudo sed -i '/^GRUB_BACKGROUND=/d' /etc/default/grub
-            sudo rm -f /boot/grub/kubuntu-lite-fondo.*
+            sudo rm -f /boot/grub/ubuntu-ultimate-tools-fondo.*
             ;;
         7)
             echo -e "  1) Automática  2) 1920x1080  3) 1366x768  4) 1280x1024  5) 1024x768  0) Volver"
@@ -3212,7 +3213,7 @@ undo_grub_customizer() {
         [ -e "$entry" ] || continue
         keep=false
         printf '%s\n' "${owned[@]}" | grep -qxF "$entry" && keep=true
-        [[ "${entry##*/}" == *kubuntu_lite* || "${entry##*/}" == README ]] && keep=true
+        [[ "${entry##*/}" == *ubuntu_ultimate_tools* || "${entry##*/}" == README ]] && keep=true
         $keep || sudo rm -rf "$entry"
     done
 
@@ -3247,10 +3248,10 @@ grub_restore_original() {
     if [ -f "$GRUB_DEFAULT_BACKUP" ]; then
         sudo cp -p "$GRUB_DEFAULT_BACKUP" /etc/default/grub && sudo rm -f "$GRUB_DEFAULT_BACKUP"
     fi
-    sudo rm -f "$GRUB_LOOK_FILE" "$GRUB_OTHERS_FIRST" /boot/grub/kubuntu-lite-fondo.*
+    sudo rm -f "$GRUB_LOOK_FILE" "$GRUB_OTHERS_FIRST" /boot/grub/ubuntu-ultimate-tools-fondo.*
     local wrapper
-    for wrapper in /etc/grub.d/*_kubuntu_lite; do
-        [ -f "$wrapper" ] && remove_grub_filter_wrapper "${wrapper%_kubuntu_lite}"
+    for wrapper in /etc/grub.d/*_ubuntu_ultimate_tools; do
+        [ -f "$wrapper" ] && remove_grub_filter_wrapper "${wrapper%_ubuntu_ultimate_tools}"
     done
     sudo rm -f "$GRUB_HIDDEN_LIST" "$GRUB_FILTER_AWK"
     grub_scripts_chmod +x memtest86+
@@ -3646,8 +3647,8 @@ remove_shortcuts_menu() {
 # OPCIÓN 15: RED, DNS Y DRIVERS (COLOR: AZUL)
 # ============================================================
 
-RESOLVED_DNS_CONF="/etc/systemd/resolved.conf.d/99-kubuntu-lite-dns.conf"
-NM_WIFI_CONF="/etc/NetworkManager/conf.d/99-kubuntu-lite-wifi.conf"
+RESOLVED_DNS_CONF="/etc/systemd/resolved.conf.d/99-ubuntu-ultimate-tools-dns.conf"
+NM_WIFI_CONF="/etc/NetworkManager/conf.d/99-ubuntu-ultimate-tools-wifi.conf"
 
 # nombre|servidores (IPv4 e IPv6, con el nombre para DNS cifrado)|descripción
 DNS_PROVIDERS=(
@@ -3771,7 +3772,7 @@ enable_bbr() {
     fi
     # Si BBR es un módulo, se carga en cada arranque
     if [ "$algo" = "bbr" ] && modinfo tcp_bbr &> /dev/null; then
-        echo tcp_bbr | sudo tee /etc/modules-load.d/kubuntu-lite-bbr.conf > /dev/null
+        echo tcp_bbr | sudo tee "$BBR_MODULES_FILE" > /dev/null
     fi
     set_sysctl net.core.default_qdisc fq
     set_sysctl net.ipv4.tcp_congestion_control "$algo"
@@ -3779,7 +3780,7 @@ enable_bbr() {
 }
 
 disable_bbr() {
-    sudo rm -f /etc/modules-load.d/kubuntu-lite-bbr.conf
+    sudo rm -f "$BBR_MODULES_FILE"
     sudo sed -i '/^net\.core\.default_qdisc/d; /^net\.ipv4\.tcp_congestion_control/d' "$SYSCTL_FILE" 2>/dev/null
     # Valores por defecto de Ubuntu
     run "No se pudo restaurar TCP" sudo sysctl -w net.ipv4.tcp_congestion_control=cubic net.core.default_qdisc=fq_codel \
@@ -3998,7 +3999,7 @@ configure_mangohud() {
     mkdir -p "$(dirname "$MANGOHUD_CONF")" "$HOME/mangohud-logs"
     if [ ! -f "$MANGOHUD_CONF" ]; then
         cat > "$MANGOHUD_CONF" << EOF
-# Creado por Kubuntu Lite Ultimate
+# Creado por Ubuntu Ultimate Tools
 fps
 frametime
 cpu_stats
@@ -4253,7 +4254,7 @@ profiles_menu() {
         printf "  ${PURPLE}%s)${NC} %-14s %s\n" "$i" "${entry%%|*}" "${entry#*|}"
     done
     echo -e "\n  ${PURPLE}0)${NC} 🔙 Volver"
-    echo -e "\n${YELLOW}💡 También desde terminal: ./Kubuntu-clean.sh --perfil gaming${NC}\n"
+    echo -e "\n${YELLOW}💡 También desde terminal: ./ubuntu-ultimate-tools.sh --perfil gaming${NC}\n"
     read -r -p "📌 Opción: " choice
     if [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le ${#PROFILES[@]} ]; then
         entry=${PROFILES[$((choice - 1))]}
@@ -4358,7 +4359,7 @@ restore_sysctl_defaults() {
             echo -e "  • $key: $value → valor de fábrica (al reiniciar)"
         fi
     done < "$SYSCTL_FILE"
-    sudo rm -f "$SYSCTL_FILE" /etc/modules-load.d/kubuntu-lite-bbr.conf
+    sudo rm -f "$SYSCTL_FILE" "$BBR_MODULES_FILE"
     # Vuelve a aplicar los valores que definen Ubuntu y los demás paquetes
     run "No se pudieron recargar los ajustes del sistema" sudo sysctl --system \
         && log_success "Ajustes del sistema restaurados"
@@ -4494,6 +4495,73 @@ undo_menu() {
 }
 
 # ============================================================
+# MIGRACIÓN DESDE "KUBUNTU LITE"
+# ============================================================
+
+# Las versiones anteriores se llamaban "Kubuntu Lite" y guardaban su configuración con
+# ese nombre. La primera vez se renombra todo (sin cambiar su contenido) para que el
+# script siga reconociendo lo que ya se configuró. Si no hay nada viejo, no hace nada.
+migrate_from_kubuntu_lite() {
+    local old new pair f ext orig moved=false grub_changed=false
+    local pairs=(
+        "/etc/kubuntu-lite|$UUT_ETC"
+        "/etc/sysctl.d/99-kubuntu-lite.conf|$SYSCTL_FILE"
+        "/etc/modules-load.d/kubuntu-lite-bbr.conf|$BBR_MODULES_FILE"
+        "/etc/NetworkManager/conf.d/99-kubuntu-lite-wifi.conf|$NM_WIFI_CONF"
+        "/etc/systemd/resolved.conf.d/99-kubuntu-lite-dns.conf|$RESOLVED_DNS_CONF"
+        "/etc/default/grub.kubuntu-lite.orig|$GRUB_DEFAULT_BACKUP"
+        "/etc/grub.d/09_kubuntu_lite_otros_primero|$GRUB_OTHERS_FIRST"
+        "/etc/grub.d/42_kubuntu_lite_apariencia|$GRUB_LOOK_FILE"
+    )
+
+    # Archivos del usuario
+    rm -f "$HOME/kubuntu-lite.log"
+    if [ -d "$HOME/.local/share/kubuntu-lite" ] && [ ! -e "$STATE_DIR" ]; then
+        mkdir -p "$(dirname "$STATE_DIR")"
+        mv "$HOME/.local/share/kubuntu-lite" "$STATE_DIR" && moved=true
+    fi
+
+    # Archivos del sistema
+    for pair in "${pairs[@]}"; do
+        old=${pair%%|*}
+        new=${pair#*|}
+        if [ -e "$old" ] && [ ! -e "$new" ]; then
+            sudo mv "$old" "$new" && moved=true
+            [[ "$new" == /etc/grub.d/* || "$new" == "$GRUB_DEFAULT_BACKUP" ]] && grub_changed=true
+        fi
+    done
+
+    # Fondo de GRUB: archivo y ruta en /etc/default/grub
+    for f in /boot/grub/kubuntu-lite-fondo.*; do
+        [ -f "$f" ] || continue
+        ext=${f##*.}
+        sudo mv "$f" "/boot/grub/ubuntu-ultimate-tools-fondo.$ext"
+        sudo sed -i '/^GRUB_BACKGROUND=/s|kubuntu-lite-fondo\.|ubuntu-ultimate-tools-fondo.|' /etc/default/grub
+        moved=true
+        grub_changed=true
+    done
+
+    # Filtros de entradas ocultas: llevan las rutas dentro, se escriben de nuevo
+    for f in /etc/grub.d/*_kubuntu_lite; do
+        [ -f "$f" ] || continue
+        orig=${f%_kubuntu_lite}
+        sudo rm -f "$f"
+        [ -f "$orig" ] && write_grub_filter_wrapper "$orig"
+        moved=true
+        grub_changed=true
+    done
+
+    $moved || return 0
+    # Los que llevan rutas dentro se reescriben con las nuevas
+    [ -f "$GRUB_FILTER_AWK" ] && write_grub_filter
+    [ -f "$GRUB_OTHERS_FIRST" ] && write_others_first_script
+    log_success "Configuración de \"Kubuntu Lite\" pasada a \"Ubuntu Ultimate Tools\""
+    if $grub_changed; then
+        regen_grub || log_warning "Revisa el menú de GRUB en la opción 12"
+    fi
+}
+
+# ============================================================
 # MENÚ PRINCIPAL (COLOR: CIAN)
 # ============================================================
 
@@ -4604,7 +4672,7 @@ if [ "$EUID" -eq 0 ]; then
     exit 1
 fi
 
-echo "=== Kubuntu Lite Ultimate - $(date) ===" > "$LOG_FILE"
+echo "=== Ubuntu Ultimate Tools - $(date) ===" > "$LOG_FILE"
 
 # Pide la contraseña una sola vez y la mantiene activa mientras corre el script
 echo -e "${YELLOW}🔑 Se necesitan permisos de administrador${NC}"
@@ -4614,6 +4682,7 @@ if ! sudo -v; then
 fi
 while kill -0 "$$" 2>/dev/null; do sudo -n true; sleep 60; done 2>/dev/null &
 
+migrate_from_kubuntu_lite
 cleanup_pending_kernels
 
 if [ -n "$PROFILE" ]; then

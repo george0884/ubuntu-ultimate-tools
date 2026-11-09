@@ -1,6 +1,6 @@
 <div align="center">
   
-# 🚀 Kubuntu Transformer
+# 🚀 Ubuntu Ultimate Tools
 
 ### Transforma tu Kubuntu en un sistema minimalista estilo KDE Neon
 
@@ -15,7 +15,7 @@
 
 ## 📖 Descripción
 
-**Kubuntu Transformer** es un script interactivo que te permite convertir tu instalación de Kubuntu en un sistema minimalista similar a **KDE Neon**. Con una interfaz de menús fácil de usar, puedes:
+**Ubuntu Ultimate Tools** es un script interactivo que te permite convertir tu instalación de Kubuntu en un sistema minimalista similar a **KDE Neon**. Con una interfaz de menús fácil de usar, puedes:
 
 - 🗑️ **Eliminar** aplicaciones preinstaladas de Kubuntu
 - ⚙️ **Configurar** el sistema al estilo Neon (backports, sin Snap)
@@ -61,8 +61,8 @@ El repositorio es **privado**: para descargarlo hay que iniciar sesión en GitHu
 ```bash
 sudo apt install gh
 gh auth login          # GitHub.com → HTTPS → Yes → Login with a web browser
-git clone https://github.com/george0884/Extremely-custom-Kubuntu.git
-cd Extremely-custom-Kubuntu
+git clone https://github.com/george0884/ubuntu-ultimate-tools.git
+cd ubuntu-ultimate-tools
 ```
 
 Para actualizar más adelante: `git pull`
@@ -74,13 +74,13 @@ En la página del repositorio: **Code → Download ZIP**, y descomprímelo.
 2. Dar permisos de ejecución
 
 ```bash
-chmod +x Kubuntu-clean.sh
+chmod +x ubuntu-ultimate-tools.sh
 ```
 
 3. Ejecutar
 
 ```bash
-./Kubuntu-clean.sh
+./ubuntu-ultimate-tools.sh
 ```
 
 💡 No es necesario ejecutarlo como root. El script solicitará sudo cuando sea necesario.
@@ -120,9 +120,9 @@ Aplican varias optimizaciones de una vez, sin preguntas intermedias. Se eligen d
 o desde la terminal:
 
 ```bash
-./Kubuntu-clean.sh --perfiles                  # lista los perfiles
-./Kubuntu-clean.sh --perfil gaming             # muestra el plan y pide una confirmación
-./Kubuntu-clean.sh --perfil productividad --si # sin confirmación
+./ubuntu-ultimate-tools.sh --perfiles                  # lista los perfiles
+./ubuntu-ultimate-tools.sh --perfil gaming             # muestra el plan y pide una confirmación
+./ubuntu-ultimate-tools.sh --perfil productividad --si # sin confirmación
 ```
 
 | Perfil | Qué hace |
@@ -184,11 +184,11 @@ Todo lo hace el propio script, sin instalar programas externos.
 | | **11–13** Guías | Prompt `grub>`, `grub rescue>` y reparación manual desde Live USB |
 
 Antes del primer cambio, el script guarda una copia de `/etc/default/grub`
-(`/etc/default/grub.kubuntu-lite.orig`) para poder volver al menú original.
+(`/etc/default/grub.ubuntu-ultimate-tools.orig`) para poder volver al menú original.
 
 Para ocultar entradas sueltas, el script desactiva el script de GRUB que las genera y en su lugar
-ejecuta `<script>_kubuntu_lite`, que lo llama y quita las entradas de la lista
-`/etc/kubuntu-lite/grub-ocultas`. Si una actualización reactiva el original, el filtro se aparta
+ejecuta `<script>_ubuntu_ultimate_tools`, que lo llama y quita las entradas de la lista
+`/etc/ubuntu-ultimate-tools/grub-ocultas`. Si una actualización reactiva el original, el filtro se aparta
 (sin entradas duplicadas) hasta que se vuelva a usar la opción. No se pueden ocultar todas las
 entradas de Kubuntu.
 
@@ -209,7 +209,7 @@ La reparación automática desde Live USB:
 Como el repositorio es privado, desde el Live USB no se puede descargar el script sin iniciar
 sesión. Lo más práctico es **guardarlo ahora en un pendrive**, mientras el sistema funciona:
 
-1. Copia `Kubuntu-clean.sh` a un pendrive (puede ser el mismo del Live USB si tiene una
+1. Copia `ubuntu-ultimate-tools.sh` a un pendrive (puede ser el mismo del Live USB si tiene una
    partición de datos, o uno aparte).
 2. Ten a mano también un **USB de instalación de Kubuntu** (el Live USB).
 
@@ -224,10 +224,10 @@ sesión. Lo más práctico es **guardarlo ahora en un pendrive**, mientras el si
 
 ```bash
 cd /media/kubuntu/PENDRIVE
-bash Kubuntu-clean.sh      # opción 12 → 10
+bash ubuntu-ultimate-tools.sh      # opción 12 → 10
 ```
 
-- Se usa `bash Kubuntu-clean.sh` y no `./Kubuntu-clean.sh` porque los pendrives FAT32/exFAT
+- Se usa `bash ubuntu-ultimate-tools.sh` y no `./ubuntu-ultimate-tools.sh` porque los pendrives FAT32/exFAT
   no guardan el permiso de ejecución.
 - `ls /media/kubuntu/` muestra el nombre exacto del pendrive.
 - Si tienes internet en el Live USB y prefieres no usar pendrive: `sudo apt install gh`,
@@ -247,7 +247,7 @@ disponible, se vuelve a la selección escribiendo números.
 ↩️ Deshacer optimizaciones (opción 18)
 
 - **Quitar programas instalados por el script**, con casillas. El script anota en
-  `~/.local/share/kubuntu-lite/paquetes-instalados.txt` solo los programas que **no tenías antes**;
+  `~/.local/share/ubuntu-ultimate-tools/paquetes-instalados.txt` solo los programas que **no tenías antes**;
   los instalados con versiones anteriores del script aparecen marcados "sin registro".
   Antes de desinstalar avisa si se quitará algo más por dependencias.
 - **Restaurar ajustes del sistema** (RAM, inotify, BBR...) a sus valores de fábrica.
@@ -291,7 +291,7 @@ Dentro de la opción 3:
 - Liquorix y XanMod **no están firmados**: requieren **Secure Boot desactivado** (el script lo comprueba).
 - El kernel oficial se conserva siempre como respaldo. Si un kernel no arranca, elige el `generic`
   en *Opciones avanzadas* de GRUB (Shift/Esc al encender) y usa la opción 3.
-- Los errores se muestran en pantalla y el detalle completo queda en `~/kubuntu-lite.log`.
+- Los errores se muestran en pantalla y el detalle completo queda en `~/ubuntu-ultimate-tools.log`.
 
 ---
 
@@ -300,7 +300,7 @@ Dentro de la opción 3:
 - Quita el PPA backports y **baja Plasma a la versión oficial** (quitar el PPA no lo hace solo).
 - Desbloquea Snap y reinstala `kubuntu-desktop` **con todas sus aplicaciones**.
 - Reinstala todo lo que el script eliminó (incluidas dependencias); la lista está en
-  `~/.local/share/kubuntu-lite/paquetes-eliminados.txt`.
+  `~/.local/share/ubuntu-ultimate-tools/paquetes-eliminados.txt`.
 - Restaura los íconos del escritorio y las aplicaciones fijadas del panel quitadas con la opción 14.
 
 ---
