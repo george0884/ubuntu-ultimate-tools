@@ -282,8 +282,10 @@ checklist_select() {
         [[ "$entry" == *"|ON" ]] && { status="x"; entry=${entry%|ON}; }
         printf "  ${CYAN}[%2s]${NC} [%s] %-22s - %s\n" "$i" "$status" "${entry%%|*}" "${entry#*|}"
     done
-    echo -e "\n${CYAN}([x] = marcado ahora; escribe todos los que quieras dejar marcados)${NC}"
+    echo -e "\n${CYAN}([x] = marcado ahora; escribe todos los que quieras dejar marcados; Enter = cancelar)${NC}"
     read -r -p "🔢 Números separados por espacio: " input
+    # Sin respuesta no se cambia nada (no significa "desmarcar todo")
+    [ -n "${input// /}" ] || return 1
     for num in $input; do
         if [[ "$num" =~ ^[0-9]+$ ]] && [ "$num" -ge 1 ] && [ "$num" -le ${#entries[@]} ]; then
             CHOSEN+=("${entries[$((num - 1))]%%|*}")
@@ -2769,6 +2771,11 @@ GRUB_LOOK_FILE="/etc/grub.d/42_kubuntu_lite_apariencia"
 # Regenera grub.cfg. Si falla, muestra el error en pantalla: grub-mkconfig solo
 # reemplaza el menú cuando termina bien, así que el anterior sigue intacto.
 regen_grub() {
+    # La primera versión de este script buscaba os-prober solo en su sitio y hacía
+    # fallar update-grub si Grub Customizer lo había movido: se reemplaza por la nueva
+    if [ -f "$GRUB_OTHERS_FIRST" ] && grep -q '^exec sh /etc/grub.d/30_os-prober$' "$GRUB_OTHERS_FIRST"; then
+        write_others_first_script
+    fi
     echo -e "${PURPLE}🔄 Regenerando el menú de GRUB...${NC}"
     local out rc
     out=$(sudo update-grub 2>&1)
@@ -2782,44 +2789,207 @@ regen_grub() {
     tail -8 <<< "$out" | sed 's/^/   /'
     if [ -d /etc/grub.d/proxifiedScripts ]; then
         echo -e "${YELLOW}⚠ Grub Customizer cambió los scripts de /etc/grub.d: suele ser la causa de este error.${NC}"
+        echo -e "${YELLOW}  Deshazlo en: opción 12 → 9 (Personalizar menú) → 7${NC}"
     fi
     return $rc
 }
 
-# Script de GRUB que no se puede ocultar si no está instalado
-grub_script_hidden() {
-    [ -f "$1" ] && [ ! -x "$1" ]
+# Scripts de /etc/grub.d cuyo nombre contiene el texto dado, con cualquier número
+# delante: Grub Customizer los renumera (37_uefi-firmware) o los cambia por *_proxy
+grub_scripts() {
+    local f
+    for f in /etc/grub.d/[0-9][0-9]_*"$1"*; do
+        [ -f "$f" ] && echo "$f"
+    done
+}
+
+# Oculto = existe y ninguno de sus scripts es ejecutable
+grub_scripts_hidden() {
+    local f found=false
+    while IFS= read -r f; do
+        found=true
+        [ -x "$f" ] && return 1
+    done < <(grub_scripts "$1")
+    $found
+}
+
+grub_scripts_chmod() {
+    local mode="$1" f
+    while IFS= read -r f; do
+        sudo chmod "$mode" "$f"
+    done < <(grub_scripts "$2")
+}
+
+# --- Ocultar entradas sueltas -------------------------------------------------
+# Cada script de GRUB con entradas ocultas se desactiva (sin permiso de ejecución) y
+# en su lugar corre "<script>_kubuntu_lite", que lo ejecuta y filtra su salida con
+# grub-filtro.awk según la lista de títulos ocultos.
+KL_ETC="/etc/kubuntu-lite"
+GRUB_HIDDEN_LIST="$KL_ETC/grub-ocultas"
+GRUB_FILTER_AWK="$KL_ETC/grub-filtro.awk"
+
+write_grub_filter() {
+    sudo install -d -m 0755 "$KL_ETC"
+    sudo tee "$GRUB_FILTER_AWK" > /dev/null << 'EOF'
+# Kubuntu Lite: quita del menú de GRUB las entradas cuyo título está en la lista
+# (líneas "script|título"). Una entrada ocupa desde su línea "menuentry" hasta la
+# llave que la cierra.
+BEGIN {
+    while ((getline line < list) > 0) {
+        sub(/^[^|]*\|/, "", line)
+        if (line != "") hide[line] = 1
+    }
+    close(list)
+}
+skip > 0 { skip += gsub(/\{/, "{") - gsub(/\}/, "}"); next }
+/^[ \t]*menuentry / {
+    t = $0
+    sub(/^[ \t]*menuentry[ \t]+['"]/, "", t)
+    sub(/['"].*/, "", t)
+    if (t in hide) {
+        skip = gsub(/\{/, "{") - gsub(/\}/, "}")
+        if (skip < 0) skip = 0
+        next
+    }
+}
+{ print }
+EOF
+}
+
+# Envoltorio que reemplaza a un script de GRUB y filtra sus entradas
+write_grub_filter_wrapper() {
+    local orig="$1"
+    sudo tee "${orig}_kubuntu_lite" > /dev/null << EOF
+#!/bin/sh
+# Kubuntu Lite: genera las entradas de ${orig##*/} sin las ocultas (ver $GRUB_HIDDEN_LIST)
+ORIG='$orig'
+[ -f "\$ORIG" ] || exit 0
+# Si una actualización volvió a activar el original, este filtro se aparta (sin duplicados)
+[ -x "\$ORIG" ] && exit 0
+sh "\$ORIG" | awk -v list='$GRUB_HIDDEN_LIST' -f '$GRUB_FILTER_AWK'
+EOF
+    sudo chmod +x "${orig}_kubuntu_lite"
+    sudo chmod -x "$orig"
+}
+
+remove_grub_filter_wrapper() {
+    local orig="$1"
+    sudo rm -f "${orig}_kubuntu_lite"
+    [ -f "$orig" ] && sudo chmod +x "$orig"
+}
+
+# Entradas del grub.cfg actual: "script|ruta visible|título"
+grub_cfg_entries() {
+    sudo awk -v q="'" '
+        /^### BEGIN / { src = $3; next }
+        /^submenu / { s = $0; sub("^submenu[ \t]+[" q "\"]", "", s); sub("[" q "\"].*", "", s); next }
+        /^}/ { s = ""; next }
+        /^[ \t]*menuentry / {
+            t = $0; sub("^[ \t]*menuentry[ \t]+[" q "\"]", "", t); sub("[" q "\"].*", "", t)
+            print src "|" (s != "" ? s " › " t : t) "|" t
+        }
+    ' /boot/grub/grub.cfg 2>/dev/null
 }
 
 grub_hide_entries() {
-    local entries=() memtest="/etc/grub.d/20_memtest86+" uefi="/etc/grub.d/30_uefi-firmware"
+    if [ -d /etc/grub.d/proxifiedScripts ]; then
+        log_warning "Primero deshaz los cambios de Grub Customizer (opción 7 de este menú)"
+        return 1
+    fi
+    local entries=() tags=() line src shown title i=0 hidden=()
     on() { if "$@"; then echo "|ON"; fi; }
-    entries+=("recuperacion|Modo de recuperación de cada kernel$(on grep -q '^GRUB_DISABLE_RECOVERY=true' /etc/default/grub)")
-    entries+=("otros|Otros sistemas (Windows, otras distros)$(on bash -c '! grep -q "^GRUB_DISABLE_OS_PROBER=false" /etc/default/grub && [ ! -f '"$GRUB_OTHERS_FIRST"' ]')")
-    [ -f "$memtest" ] && entries+=("memtest|Prueba de memoria (memtest86+)$(on grub_script_hidden "$memtest")")
-    [ -f "$uefi" ] && entries+=("uefi|Configuración de la UEFI (entrar a la BIOS)$(on grub_script_hidden "$uefi")")
+    [ -f "$GRUB_HIDDEN_LIST" ] && mapfile -t hidden < "$GRUB_HIDDEN_LIST"
 
-    checklist_select "Ocultar entradas" "Marca las entradas que quieres OCULTAR del menú de GRUB" "${entries[@]}" || return 0
+    # Grupos completos
+    entries+=("recuperacion|[Grupo] Todos los modos de recuperación$(on grep -q '^GRUB_DISABLE_RECOVERY=true' /etc/default/grub)")
+    tags+=("recuperacion|")
+    if grub_scripts_hidden memtest86+; then
+        entries+=("memtest|[Grupo] Toda la prueba de memoria (memtest86+)|ON"); tags+=("memtest|")
+    fi
+    if grub_scripts_hidden uefi-firmware; then
+        entries+=("uefi|[Grupo] Configuración de la UEFI|ON"); tags+=("uefi|")
+    fi
+
+    # Cada entrada del menú actual (las de recuperación van en su grupo)
+    while IFS='|' read -r src shown title; do
+        [[ "$src" == *kubuntu_lite_otros_primero* || "$src" == *_kubuntu_lite ]] && src=${src%_kubuntu_lite}
+        [[ "${title,,}" == *recovery* || "${title,,}" == *recuperaci* ]] && continue
+        i=$((i + 1))
+        entries+=("e$i|$shown")
+        tags+=("e$i|$src|$title")
+    done < <(grub_cfg_entries)
+    # Y las que ya están ocultas (no salen en el menú actual)
+    for line in "${hidden[@]}"; do
+        [ -n "$line" ] || continue
+        i=$((i + 1))
+        entries+=("e$i|${line#*|} (oculta)|ON")
+        tags+=("e$i|$line")
+    done
+
+    checklist_select "Ocultar entradas" "Marca TODAS las entradas que quieres OCULTAR del menú (las ya ocultas aparecen marcadas)" \
+        "${entries[@]}" || return 0
     clear
-    local hide=" ${CHOSEN[*]} "
+    local chosen=" ${CHOSEN[*]} " tag new_hidden=() scripts=() script title_only kubuntu_left=0 kubuntu_total=0
 
-    if [[ "$hide" == *" recuperacion "* ]]; then set_grub_var GRUB_DISABLE_RECOVERY true; else set_grub_var GRUB_DISABLE_RECOVERY false; fi
-    if [[ "$hide" == *" otros "* ]]; then
-        sudo rm -f "$GRUB_OTHERS_FIRST"
-        set_grub_var GRUB_DISABLE_OS_PROBER true
-    elif ! others_visible; then
-        command -v os-prober &> /dev/null || { apt_update; apt_install os-prober || return 1; }
-        set_grub_var GRUB_DISABLE_OS_PROBER false
+    if [[ "$chosen" == *" recuperacion "* ]]; then set_grub_var GRUB_DISABLE_RECOVERY true; else set_grub_var GRUB_DISABLE_RECOVERY false; fi
+    [[ "$chosen" != *" memtest "* ]] && grub_scripts_hidden memtest86+ && grub_scripts_chmod +x memtest86+
+    [[ "$chosen" != *" uefi "* ]] && grub_scripts_hidden uefi-firmware && grub_scripts_chmod +x uefi-firmware
+
+    for tag in "${tags[@]}"; do
+        [[ "$tag" == e* ]] || continue
+        IFS='|' read -r _ script title_only <<< "$tag"
+        if [[ "$script" == */10_linux ]]; then
+            kubuntu_total=$((kubuntu_total + 1))
+            [[ "$chosen" == *" ${tag%%|*} "* ]] || kubuntu_left=$((kubuntu_left + 1))
+        fi
+        [[ "$chosen" == *" ${tag%%|*} "* ]] && new_hidden+=("$script|$title_only")
+    done
+    if [ "$kubuntu_total" -gt 0 ] && [ "$kubuntu_left" -eq 0 ]; then
+        log_error "No puedes ocultar todas las entradas de Kubuntu: no podrías arrancarlo. No se cambió nada."
+        return 1
     fi
-    # Para desactivar un script de GRUB se le quita el permiso de ejecución
-    # (método que recomienda GRUB; las actualizaciones lo respetan)
-    if [ -f "$memtest" ]; then
-        if [[ "$hide" == *" memtest "* ]]; then sudo chmod -x "$memtest"; else sudo chmod +x "$memtest"; fi
+
+    write_grub_filter
+    printf '%s\n' "${new_hidden[@]}" | sed '/^$/d' | sort -u | sudo tee "$GRUB_HIDDEN_LIST" > /dev/null
+    # Filtro solo en los scripts que tienen algo oculto
+    mapfile -t scripts < <(printf '%s\n' "${new_hidden[@]}" | cut -d'|' -f1 | sed '/^$/d' | sort -u)
+    local wrapper orig
+    for wrapper in /etc/grub.d/*_kubuntu_lite; do
+        [ -f "$wrapper" ] || continue
+        orig=${wrapper%_kubuntu_lite}
+        printf '%s\n' "${scripts[@]}" | grep -qxF "$orig" || remove_grub_filter_wrapper "$orig"
+    done
+    for script in "${scripts[@]}"; do
+        [[ "$script" == *kubuntu_lite_otros_primero ]] && continue
+        [ -f "$script" ] && write_grub_filter_wrapper "$script"
+    done
+    # "Otros sistemas primero" llama a os-prober por su cuenta: también usa el filtro
+    [ -f "$GRUB_OTHERS_FIRST" ] && write_others_first_script
+
+    regen_grub && log_success "Menú actualizado: ${#new_hidden[@]} entradas ocultas"
+}
+
+write_others_first_script() {
+    sudo tee "$GRUB_OTHERS_FIRST" > /dev/null << 'EOF'
+#!/bin/sh
+# Kubuntu Lite: muestra los otros sistemas (Windows, otras distros) antes que Kubuntu.
+# El script de os-prober puede estar en su sitio o movido por Grub Customizer; si no
+# está, no hace nada (nunca debe hacer fallar update-grub).
+GRUB_DISABLE_OS_PROBER=false
+export GRUB_DISABLE_OS_PROBER
+for script in /etc/grub.d/30_os-prober /etc/grub.d/proxifiedScripts/os-prober; do
+    if [ -f "$script" ]; then
+        if [ -f /etc/kubuntu-lite/grub-filtro.awk ]; then
+            sh "$script" | awk -v list=/etc/kubuntu-lite/grub-ocultas -f /etc/kubuntu-lite/grub-filtro.awk
+        else
+            sh "$script"
+        fi
+        exit 0
     fi
-    if [ -f "$uefi" ]; then
-        if [[ "$hide" == *" uefi "* ]]; then sudo chmod -x "$uefi"; else sudo chmod +x "$uefi"; fi
-    fi
-    regen_grub && log_success "Menú actualizado (ocultas: ${CHOSEN[*]:-ninguna})"
+done
+exit 0
+EOF
+    sudo chmod +x "$GRUB_OTHERS_FIRST"
 }
 
 # Otros sistemas antes que Kubuntu: un script que corre antes que 10_linux llama a
@@ -2834,14 +3004,7 @@ grub_others_first_toggle() {
     fi
     confirm "${PURPLE}¿Mostrar Windows y los otros sistemas ANTES que Kubuntu en el menú?${NC}" || return 0
     command -v os-prober &> /dev/null || { apt_update; apt_install os-prober || return 1; }
-    sudo tee "$GRUB_OTHERS_FIRST" > /dev/null << 'EOF'
-#!/bin/sh
-# Kubuntu Lite: muestra los otros sistemas (Windows, otras distros) antes que Kubuntu
-GRUB_DISABLE_OS_PROBER=false
-export GRUB_DISABLE_OS_PROBER
-exec sh /etc/grub.d/30_os-prober
-EOF
-    sudo chmod +x "$GRUB_OTHERS_FIRST"
+    write_others_first_script
     set_grub_var GRUB_DISABLE_OS_PROBER true
     # Que el orden no cambie lo que arranca solo: Kubuntu sigue siendo el predeterminado
     ensure_grub_saved
@@ -2968,8 +3131,88 @@ grub_kernel_params_menu() {
     regen_grub && log_success "Parámetros del kernel: ${params:-(ninguno)} (se aplican al reiniciar)"
 }
 
+# Deshace los cambios de Grub Customizer en /etc/grub.d sin usar el programa:
+# cada script original de un paquete vuelve a su nombre (desde su copia renumerada,
+# desde proxifiedScripts o reinstalando el paquete) y se quita todo lo demás.
+# Antes se guarda una copia completa de /etc/grub.d.
+undo_grub_customizer() {
+    if [ ! -d /etc/grub.d/proxifiedScripts ]; then
+        echo -e "${GREEN}✓ Grub Customizer no modificó /etc/grub.d${NC}"
+        return 0
+    fi
+    echo -e "${PURPLE}Grub Customizer cambió los scripts de GRUB: los renumeró, los movió a${NC}"
+    echo -e "${PURPLE}proxifiedScripts y puso los suyos (*_proxy). Esto los deja como los instala Ubuntu.${NC}\n"
+    confirm "${PURPLE}¿Deshacer los cambios de Grub Customizer?${NC}" || return 0
+
+    local backup
+    backup="/etc/grub.d.antes-de-deshacer-grub-customizer-$(date +%Y%m%d-%H%M%S)"
+    run "No se pudo hacer la copia de seguridad" sudo cp -a /etc/grub.d "$backup" || return 1
+    log_success "Copia de seguridad: $backup"
+
+    # Scripts que instalan los paquetes (grub-common, memtest86+, fwupd...)
+    local owned=() pkgs=() path name candidate missing_pkgs=()
+    mapfile -t owned < <(dpkg-query -S '/etc/grub.d/*' 2>/dev/null | grep -v '^diversion' \
+        | awk -F': ' '$2 ~ "^/etc/grub.d/[^/]+$" {print $2}' | sort -u)
+    # Seguro: sin la lista de los originales no se toca nada (se borraría todo)
+    if ! printf '%s\n' "${owned[@]}" | grep -q '/00_header$' \
+        || ! printf '%s\n' "${owned[@]}" | grep -q '/10_linux$'; then
+        log_error "No se pudo saber qué scripts instala Ubuntu: no se cambió nada"
+        return 1
+    fi
+    for path in "${owned[@]}"; do
+        [ -f "$path" ] && continue
+        name=${path##*/}
+        name=${name#[0-9][0-9]_}
+        candidate=""
+        for candidate in /etc/grub.d/[0-9][0-9]_"$name" /etc/grub.d/proxifiedScripts/"$name"; do
+            # Nunca otro original con el mismo nombre (40_custom y 41_custom son distintos)
+            [ -f "$candidate" ] && ! printf '%s\n' "${owned[@]}" | grep -qxF "$candidate" && break
+            candidate=""
+        done
+        if [ -n "$candidate" ]; then
+            sudo mv "$candidate" "$path"
+            sudo chmod +x "$path"
+            echo -e "  ${GREEN}✓ ${path##*/} vuelve a su lugar${NC}"
+        else
+            mapfile -t pkgs < <(dpkg-query -S "$path" 2>/dev/null | cut -d: -f1 | tr ',' '\n' | xargs -n1)
+            missing_pkgs+=("${pkgs[@]}")
+        fi
+    done
+
+    # Todo lo que no es de un paquete ni de este script: proxies, copias, bin/, backup/...
+    local entry keep
+    for entry in /etc/grub.d/* /etc/grub.d/.script_sources.txt; do
+        [ -e "$entry" ] || continue
+        keep=false
+        printf '%s\n' "${owned[@]}" | grep -qxF "$entry" && keep=true
+        [[ "${entry##*/}" == *kubuntu_lite* || "${entry##*/}" == README ]] && keep=true
+        $keep || sudo rm -rf "$entry"
+    done
+
+    # Los que no tenían copia se recuperan del paquete (dpkg repone los archivos que faltan)
+    if [ ${#missing_pkgs[@]} -gt 0 ]; then
+        mapfile -t missing_pkgs < <(printf '%s\n' "${missing_pkgs[@]}" | sort -u)
+        echo -e "${PURPLE}📦 Recuperando del paquete: ${missing_pkgs[*]}${NC}"
+        apt_update
+        run "No se pudieron recuperar los scripts originales" sudo env DEBIAN_FRONTEND=noninteractive \
+            apt-get install --reinstall -y -o Dpkg::Options::=--force-confmiss "${missing_pkgs[@]}"
+    fi
+
+    if regen_grub; then
+        log_success "Cambios de Grub Customizer deshechos"
+    else
+        log_error "update-grub sigue fallando: la copia de /etc/grub.d está en $backup"
+        return 1
+    fi
+    if installed_pkgs grub-customizer | grep -qx grub-customizer \
+        && confirm "${PURPLE}¿Desinstalar Grub Customizer para que no vuelva a cambiar el menú?${NC}"; then
+        apt_purge grub-customizer && forget_installed grub-customizer
+    fi
+}
+
 grub_restore_original() {
-    if [ ! -f "$GRUB_DEFAULT_BACKUP" ] && [ ! -f "$GRUB_LOOK_FILE" ] && [ ! -f "$GRUB_OTHERS_FIRST" ]; then
+    if [ ! -f "$GRUB_DEFAULT_BACKUP" ] && [ ! -f "$GRUB_LOOK_FILE" ] && [ ! -f "$GRUB_OTHERS_FIRST" ] \
+        && [ ! -f "$GRUB_HIDDEN_LIST" ]; then
         echo -e "${GREEN}✓ El menú de GRUB no tiene cambios del script${NC}"
         return 0
     fi
@@ -2978,10 +3221,13 @@ grub_restore_original() {
         sudo cp -p "$GRUB_DEFAULT_BACKUP" /etc/default/grub && sudo rm -f "$GRUB_DEFAULT_BACKUP"
     fi
     sudo rm -f "$GRUB_LOOK_FILE" "$GRUB_OTHERS_FIRST" /boot/grub/kubuntu-lite-fondo.*
-    local script
-    for script in /etc/grub.d/20_memtest86+ /etc/grub.d/30_uefi-firmware; do
-        [ -f "$script" ] && sudo chmod +x "$script"
+    local wrapper
+    for wrapper in /etc/grub.d/*_kubuntu_lite; do
+        [ -f "$wrapper" ] && remove_grub_filter_wrapper "${wrapper%_kubuntu_lite}"
     done
+    sudo rm -f "$GRUB_HIDDEN_LIST" "$GRUB_FILTER_AWK"
+    grub_scripts_chmod +x memtest86+
+    grub_scripts_chmod +x uefi-firmware
     regen_grub && run "No se pudo fijar el kernel por defecto" sudo grub-set-default 0 \
         && log_success "Menú de GRUB restaurado"
 }
@@ -2995,19 +3241,19 @@ grub_customize_menu() {
             echo "   • ${entry#*|}"
         done < <(grub_menu_entries)
         if [ -d /etc/grub.d/proxifiedScripts ]; then
-            echo -e "\n${YELLOW}⚠ Grub Customizer modificó este menú: sus cambios pueden pisar los de aquí.${NC}"
-            echo -e "${YELLOW}  Para evitarlo, revierte su configuración y desinstálalo (opción 18).${NC}"
+            echo -e "\n${YELLOW}⚠ Grub Customizer modificó este menú: usa la opción 7 para deshacerlo.${NC}"
         fi
         echo ""
-        echo -e "  ${PURPLE}1)${NC} Ocultar o mostrar entradas (recuperación, otros sistemas, memtest, UEFI)"
+        echo -e "  ${PURPLE}1)${NC} Ocultar o mostrar entradas: marca cada una (kernels, Windows, memtest...)"
         echo -e "  ${PURPLE}2)${NC} Orden: otros sistemas (Windows...) antes o después de Kubuntu"
         echo -e "  ${PURPLE}3)${NC} Recordar el último sistema elegido"
         echo -e "  ${PURPLE}4)${NC} Apariencia: colores, imagen de fondo y resolución"
         echo -e "  ${PURPLE}5)${NC} Parámetros de arranque del kernel"
-        echo -e "  ${PURPLE}6)${NC} Restaurar el menú original"
-        echo -e "  ${PURPLE}7)${NC} ⬅️ Volver"
+        echo -e "  ${PURPLE}6)${NC} Restaurar el menú original (deshace los cambios de este script)"
+        echo -e "  ${PURPLE}7)${NC} Deshacer los cambios de Grub Customizer"
+        echo -e "  ${PURPLE}0)${NC} 🔙 Volver"
         echo -e "\n${YELLOW}ℹ Qué arranca por defecto y cuánto espera el menú: opción 6 del menú de GRUB${NC}\n"
-        read -r -p "📌 Opción (1-7): " custom_option
+        read -r -p "📌 Opción (0-7): " custom_option
         case $custom_option in
             1) grub_hide_entries ;;
             2) grub_others_first_toggle ;;
@@ -3015,7 +3261,8 @@ grub_customize_menu() {
             4) grub_appearance_menu ;;
             5) grub_kernel_params_menu ;;
             6) grub_restore_original ;;
-            7) return 0 ;;
+            7) undo_grub_customizer ;;
+            0) return 0 ;;
             *) echo -e "${RED}❌ Opción inválida${NC}"; sleep 1; continue ;;
         esac
         pause
