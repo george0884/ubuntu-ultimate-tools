@@ -2766,9 +2766,24 @@ esp_fsck() {
 
 GRUB_LOOK_FILE="/etc/grub.d/42_kubuntu_lite_apariencia"
 
+# Regenera grub.cfg. Si falla, muestra el error en pantalla: grub-mkconfig solo
+# reemplaza el menú cuando termina bien, así que el anterior sigue intacto.
 regen_grub() {
     echo -e "${PURPLE}🔄 Regenerando el menú de GRUB...${NC}"
-    run "Falló update-grub" sudo update-grub
+    local out rc
+    out=$(sudo update-grub 2>&1)
+    rc=$?
+    echo "[$(date '+%H:%M:%S')] \$ update-grub" >> "$LOG_FILE"
+    echo "$out" >> "$LOG_FILE"
+    [ $rc -eq 0 ] && return 0
+
+    log_error "Falló update-grub (código $rc). El menú de arranque anterior sigue intacto."
+    echo -e "${YELLOW}Últimas líneas del error:${NC}"
+    tail -8 <<< "$out" | sed 's/^/   /'
+    if [ -d /etc/grub.d/proxifiedScripts ]; then
+        echo -e "${YELLOW}⚠ Grub Customizer cambió los scripts de /etc/grub.d: suele ser la causa de este error.${NC}"
+    fi
+    return $rc
 }
 
 # Script de GRUB que no se puede ocultar si no está instalado
