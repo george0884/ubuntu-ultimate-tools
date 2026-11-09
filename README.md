@@ -101,7 +101,7 @@ chmod +x Kubuntu-clean.sh
  9) ↩️  Revertir a Kubuntu original
 10) ☢️  ELIMINACION NUCLEAR DE SNAP
 11) 🔄 REINSTALAR SNAP
-12) 🔧 REPARAR GRUB (BIOS/EFI/Rescue)
+12) 🔧 ARRANQUE: reparar y personalizar GRUB/EFI
 13) 🔌 Apagar / Reiniciar sistema
 14) 🧹 Quitar accesos directos (escritorio y panel)
 15) 🌐 Red, DNS y drivers
@@ -164,26 +164,26 @@ Shift derecho + F12 oculta el panel · Shift izquierdo + F2 pausa/reanuda la gra
 
 ---
 
-🔧 Reparar GRUB (opción 12)
+🔧 Arranque: reparar y personalizar GRUB/EFI (opción 12)
 
-| Situación | Opción |
-|-----------|--------|
-| El sistema arranca | **2** Reparación normal · **3** Instalar GRUB en un disco concreto |
-| No arranca: aparece `grub>` | **5** Guía para arrancar a mano (`set root`, `linux`, `initrd`, `boot`) |
-| No arranca: aparece `grub rescue>` | **6** Guía para recuperar el menú (`set prefix`, `insmod normal`) |
-| No arranca: desde un **Live USB** | **4** Reparación **automática** con chroot · **7** Guía con los comandos |
+Todo lo hace el propio script, sin instalar programas externos.
 
-**Menú de arranque y EFI** (con el sistema arrancado):
+| | Opción | Qué hace |
+|---|---|---|
+| 🔍 | **1** Diagnóstico | Estado del arranque: modo UEFI/BIOS, Secure Boot, discos, kernels, configuración de GRUB, menú, entradas UEFI y partición EFI. Lo guarda en `~/diagnostico-arranque.txt` para compartirlo |
+| 🔧 | **2** Reparación rápida | Reinstala GRUB y regenera el menú |
+| | **3** Reparación completa | Verifica la partición EFI, reinstala los paquetes de GRUB (y shim), reinstala GRUB, regenera el menú, pone Kubuntu primero en UEFI y comprueba el resultado |
+| | **4** Instalar GRUB en otro disco | Solo en modo BIOS |
+| | **5** Partición EFI | Espacio libre, sistemas registrados y verificación/reparación con `fsck.vfat` |
+| 🎨 | **6** Sistema por defecto | Qué entrada arranca sola y cuántos segundos espera el menú |
+| | **7** Otros sistemas | Detectar Windows y otras distros (`os-prober`, que Ubuntu trae desactivado) |
+| | **8** Orden de arranque UEFI | Poner una entrada primera, o arrancarla solo la próxima vez |
+| | **9** Personalizar menú | Ocultar entradas (recuperación, otros sistemas, memtest, UEFI), mostrar otros sistemas antes que Kubuntu, recordar el último elegido, colores, imagen de fondo, resolución, parámetros del kernel y **restaurar el menú original** |
+| 🚑 | **10** Reparar desde Live USB | Reparación automática con chroot cuando el sistema no arranca |
+| | **11–13** Guías | Prompt `grub>`, `grub rescue>` y reparación manual desde Live USB |
 
-| Opción | Qué hace |
-|--------|----------|
-| **8** Sistema por defecto | Elige qué entrada arranca sola (Kubuntu, otro kernel, Windows...) y cuántos segundos espera el menú |
-| **9** Otros sistemas | Activa `os-prober` para que Windows y otras distros aparezcan en el menú (Ubuntu lo trae desactivado) |
-| **10** Orden de arranque UEFI | Con `efibootmgr`: pone una entrada primera, o la arranca solo la próxima vez (por ejemplo, Windows una vez) |
-| **11** Partición EFI | Muestra su espacio libre y los sistemas registrados, y la verifica y repara con `fsck.vfat` |
-| **12** Herramientas | Instala y abre **Grub Customizer** (editar el menú) o **Boot-Repair** (reparación automática), o instala **rEFInd** (gestor gráfico, UEFI) y lo quita para volver a GRUB |
-
-Grub Customizer, Boot-Repair y rEFInd se pueden desinstalar desde la opción 18.
+Antes del primer cambio, el script guarda una copia de `/etc/default/grub`
+(`/etc/default/grub.kubuntu-lite.orig`) para poder volver al menú original.
 
 La reparación automática desde Live USB:
 
@@ -213,7 +213,7 @@ sesión. Lo más práctico es **guardarlo ahora en un pendrive**, mientras el si
 
 ```bash
 cd /media/kubuntu/PENDRIVE
-bash Kubuntu-clean.sh      # opción 12 → 4
+bash Kubuntu-clean.sh      # opción 12 → 10
 ```
 
 - Se usa `bash Kubuntu-clean.sh` y no `./Kubuntu-clean.sh` porque los pendrives FAT32/exFAT
