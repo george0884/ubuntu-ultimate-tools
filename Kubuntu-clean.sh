@@ -66,6 +66,7 @@ print_header() {
 # Modo automático (perfiles): sin pausas ni preguntas; las confirmaciones responden "no"
 AUTO_MODE=false
 ASSUME_YES=false
+ACTIVE_PROFILE=""
 
 clear() {
     $AUTO_MODE || command clear
@@ -1803,6 +1804,7 @@ revert_changes() {
     echo -e "${RED}[5/5] Restaurando ajustes y limpiando configuraciones...${NC}"
     restore_all_tweaks
     rm -rf ~/.config/alacritty
+    rm -f "$HOME/.config/environment.d/90-mangohud.conf"
 
     echo ""
     echo -e "${GREEN}✓ Sistema revertido${NC}"
@@ -3370,7 +3372,64 @@ install_gaming_tools() {
     apt_install_recorded gamemode mangohud || return 1
     # Valor que usan SteamOS y Fedora: evita cierres en juegos modernos (Proton)
     set_sysctl vm.max_map_count 1048576
+    configure_mangohud
     log_success "GameMode y MangoHud instalados (en Steam: gamemoderun mangohud %command%)"
+}
+
+MANGOHUD_CONF="$HOME/.config/MangoHud/MangoHud.conf"
+MANGOHUD_ENV="$HOME/.config/environment.d/90-mangohud.conf"
+
+# Deja MangoHud mostrando y grabando los FPS (SysMonitorPro lee esos registros).
+# Sin configuración, MangoHud no graba nada y solo actúa en juegos lanzados con 'mangohud'.
+configure_mangohud() {
+    mkdir -p "$(dirname "$MANGOHUD_CONF")" "$HOME/mangohud-logs"
+    if [ ! -f "$MANGOHUD_CONF" ]; then
+        cat > "$MANGOHUD_CONF" << EOF
+# Creado por Kubuntu Lite Ultimate
+fps
+frametime
+cpu_stats
+cpu_temp
+gpu_stats
+gpu_temp
+toggle_hud=Shift_R+F12
+toggle_logging=Shift_L+F2
+output_folder=$HOME/mangohud-logs
+autostart_log=1
+EOF
+        log_success "MangoHud configurado: $MANGOHUD_CONF"
+    else
+        # Configuración propia: solo se añade lo necesario para grabar los FPS
+        local key value added=false
+        cp "$MANGOHUD_CONF" "$MANGOHUD_CONF.bak"
+        for key in output_folder autostart_log toggle_logging; do
+            grep -q "^${key}=" "$MANGOHUD_CONF" && continue
+            case $key in
+                output_folder) value="$HOME/mangohud-logs" ;;
+                autostart_log) value=1 ;;
+                toggle_logging) value="Shift_L+F2" ;;
+            esac
+            echo "${key}=${value}" >> "$MANGOHUD_CONF"
+            added=true
+        done
+        if $added; then
+            log_success "MangoHud: registro de FPS activado (copia en $MANGOHUD_CONF.bak)"
+        else
+            rm -f "$MANGOHUD_CONF.bak"
+        fi
+    fi
+
+    # Global: todos los juegos Vulkan y Proton/DXVK usan MangoHud sin tocar Steam.
+    # En el perfil 'gaming' se activa directamente; en el menú se pregunta.
+    if [ -f "$MANGOHUD_ENV" ]; then
+        log_info "MangoHud ya está activo en todos los juegos Vulkan/Proton"
+    elif [ "$ACTIVE_PROFILE" = "gaming" ] || confirm "${YELLOW}¿Activar MangoHud en todos los juegos Vulkan/Proton (sin configurar cada juego)?${NC}"; then
+        mkdir -p "$(dirname "$MANGOHUD_ENV")"
+        echo "MANGOHUD=1" > "$MANGOHUD_ENV"
+        log_success "MangoHud activo en todos los juegos Vulkan/Proton (tras cerrar sesión y volver a entrar)"
+    fi
+    log_info "Juegos OpenGL o nativos sin Vulkan: abrirlos con 'mangohud juego' o en Steam 'mangohud %command%'"
+    log_info "Shift derecho + F12 oculta el panel en el juego · Shift izquierdo + F2 pausa/reanuda la grabación"
 }
 
 power_menu() {
@@ -3512,6 +3571,7 @@ run_profile() {
         list_profiles
         return 1
     fi
+    ACTIVE_PROFILE="$name"
 
     clear
     echo -e "${PURPLE}${BOLD}"
