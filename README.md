@@ -84,13 +84,13 @@ Para actualizar más adelante: `git pull`
 
 En la página del repositorio: **Code → Download ZIP**, y descomprímelo.
 
-2. Dar permisos de ejecución
+### 2. Dar permisos de ejecución
 
 ```bash
 chmod +x ubuntu-ultimate-tools.sh
 ```
 
-3. Ejecutar
+### 3. Ejecutar
 
 ```bash
 ./ubuntu-ultimate-tools.sh
@@ -100,35 +100,7 @@ chmod +x ubuntu-ultimate-tools.sh
 
 ---
 
-🎮 Menú Principal
-
-```
- 1) 🗑️  Eliminar aplicaciones preinstaladas
- 2) ⚙️  Configurar sistema (meta-paquete, manuales y Rolling Release solo para Kubuntu)
- 3) 🎮 Optimizar GPU (NVIDIA/AMD/Intel)
- 4) ⚡ Optimizar Kernel (Liquorix/XanMod/Estándar)
- 5) 💾 Optimizar Memoria RAM (automático)
- 6) 🔄 ACTUALIZAR SISTEMA (update/upgrade/clean)
- 7) 🖥️  Instalar Alacritty (terminal GPU) y temas
- 8) 📦 Instalar software opcional
- 9) ↩️  Revertir a tu sabor original
-10) ☢️  ELIMINACION NUCLEAR DE SNAP
-11) 🔄 REINSTALAR SNAP
-12) 🔧 ARRANQUE: reparar y personalizar GRUB/EFI
-13) 🔌 Apagar / Reiniciar sistema
-14) 🧹 Quitar accesos directos (escritorio y panel)
-15) 🌐 Red, DNS y drivers
-16) 🔋 Energía y rendimiento
-17) 🚀 PERFILES AUTOMÁTICOS (gaming, productividad...)
-18) ↩️  Deshacer optimizaciones / quitar programas
-19) 🖥️  Información del sistema y hardware
-
- 0) ❌ Salir
-```
-
----
-
-🚀 Perfiles automáticos
+## 🚀 Perfiles automáticos
 
 Aplican varias optimizaciones de una vez, sin preguntas intermedias. Se eligen desde el menú (opción 17)
 o desde la terminal:
@@ -154,7 +126,7 @@ o desde la terminal:
 
 ---
 
-🌐 Red, DNS y drivers (opción 15)
+## 🌐 Red, DNS y drivers (opción 15)
 
 - **DNS**: Cloudflare, Cloudflare con bloqueo de malware, Google, Quad9 o AdGuard (bloquea anuncios), con DNS
   cifrado cuando el servidor lo permite. También puede **medir cuál responde más rápido** desde tu conexión.
@@ -168,7 +140,7 @@ o desde la terminal:
 
 ---
 
-🔋 Energía y rendimiento (opción 16)
+## 🔋 Energía y rendimiento (opción 16)
 
 Perfiles rendimiento / equilibrado / ahorro, TLP para portátiles, activar o desactivar el indexador
 de archivos Baloo, y GameMode + MangoHud para juegos.
@@ -179,7 +151,7 @@ Shift derecho + F12 oculta el panel · Shift izquierdo + F2 pausa/reanuda la gra
 
 ---
 
-🔧 Arranque: reparar y personalizar GRUB/EFI (opción 12)
+## 🔧 Arranque: reparar y personalizar GRUB/EFI (opción 12)
 
 Todo lo hace el propio script, sin instalar programas externos.
 
@@ -249,7 +221,7 @@ bash ubuntu-ultimate-tools.sh      # opción 12 → 10
 
 ---
 
-☑️ Selección con barra espaciadora
+## ☑️ Selección con barra espaciadora
 
 En "Eliminar aplicaciones" (opción 1) y "Software opcional" (opción 8) las listas usan casillas:
 **Espacio** marca o desmarca, **flechas** para moverse, **Enter** para aceptar. La lista de eliminación
@@ -258,7 +230,7 @@ disponible, se vuelve a la selección escribiendo números.
 
 ---
 
-↩️ Deshacer optimizaciones (opción 18)
+## ↩️ Deshacer optimizaciones (opción 18)
 
 - **Quitar programas instalados por el script**, con casillas. El script anota en
   `~/.local/share/ubuntu-ultimate-tools/paquetes-instalados.txt` solo los programas que **no tenías antes**;
@@ -275,7 +247,7 @@ En todos los menús y submenús, **0** vuelve al menú anterior (en el principal
 
 ---
 
-🖥️ Información del sistema y hardware (opción 19)
+## 🖥️ Información del sistema y hardware (opción 19)
 
 | | Opción | Qué muestra |
 |---|---|---|
@@ -297,7 +269,7 @@ En todos los menús y submenús, **0** vuelve al menú anterior (en el principal
 
 ---
 
-⏱️ Velocidad
+## ⏱️ Velocidad
 
 - Las apps se instalan y eliminan **en una sola operación** de apt, no una por una.
 - Los `.deb` externos (VSCode, Chrome, Discord) se descargan en paralelo.
@@ -307,7 +279,7 @@ En todos los menús y submenús, **0** vuelve al menú anterior (en el principal
 
 ---
 
-⚡ Cambio de kernel
+## ⚡ Cambio de kernel
 
 | Opción | Kernel | Notas |
 |--------|--------|-------|
@@ -331,7 +303,7 @@ Dentro de la opción 3:
 
 ---
 
-↩️ Revertir (opción 9)
+## ↩️ Revertir (opción 9)
 
 - Quita el PPA backports y **baja Plasma a la versión oficial** (quitar el PPA no lo hace solo).
 - Desbloquea Snap y reinstala el meta-paquete de tu sabor **con todas sus aplicaciones**.
@@ -341,30 +313,33 @@ Dentro de la opción 3:
 
 ---
 
-📦 Software Opcional Disponible
+## 📦 Software opcional (opción 8)
 
-Programa Descripción Tipo
-FileZilla Cliente FTP/SFTP 🖥️ GUI
-VS Code Editor de código 🖥️ GUI
-VirtualBox Máquinas virtuales 🖥️ GUI
-Google Chrome Navegador web 🖥️ GUI
-Telegram Mensajería 🖥️ GUI
-Discord Chat de voz/texto 🖥️ GUI
-Spotify Música streaming 🖥️ GUI
-OBS Studio Grabación/streaming 🖥️ GUI
-Python 3 Lenguaje de programación ⌨️ CLI
-PIP Gestor paquetes Python ⌨️ CLI
-Git Control de versiones ⌨️ CLI
-Fastfetch Info del sistema ⌨️ CLI
-Timeshift Backups del sistema 🖥️ GUI
-GParted Editor de particiones 🖥️ GUI
-HTOP Monitor de sistema ⌨️ CLI
-Vim Editor de texto ⌨️ CLI
-Curl / Wget Transferencias ⌨️ CLI
+| Programa | Para qué sirve | Origen |
+|----------|----------------|--------|
+| FileZilla | Cliente FTP/SFTP | Ubuntu |
+| Visual Studio Code | Editor de código | `.deb` oficial de Microsoft |
+| VirtualBox | Máquinas virtuales | Ubuntu |
+| Google Chrome | Navegador web | `.deb` oficial de Google |
+| Telegram | Mensajería | Ubuntu |
+| Discord | Chat de voz y texto | `.deb` oficial |
+| Spotify | Música | Repositorio de Spotify |
+| OBS Studio | Grabar pantalla y hacer streaming | Ubuntu |
+| Python 3, PIP y entornos virtuales | Programación | Ubuntu |
+| Git | Control de versiones | Ubuntu |
+| Curl y Wget | Descargas desde la terminal | Ubuntu |
+| HTOP | Monitor del sistema | Ubuntu |
+| Fastfetch | Información del sistema | Ubuntu (o `.deb` oficial si tu versión no lo trae) |
+| Timeshift | Copias de seguridad del sistema | Ubuntu |
+| GParted | Editor de particiones | Ubuntu |
+| Vim | Editor de texto en la terminal | Ubuntu |
+| Selector de emojis y Qrca | Emojis y códigos QR (de KDE) | Ubuntu |
+
+Lo que ya tienes instalado aparece marcado "(ya instalado)".
 
 ---
 
-🗑️ Aplicaciones que puedes eliminar (opción 1)
+## 🗑️ Aplicaciones que puedes eliminar (opción 1)
 
 La lista sale de los **meta-paquetes reales de cada sabor**, con dos filtros:
 
@@ -379,64 +354,67 @@ quita** y se explica por qué. Si arrastra otras cosas, se muestran antes de con
 
 ---
 
-🔄 Flujo de trabajo recomendado
+## 🔄 Flujo de trabajo recomendado
 
 ```mermaid
 graph LR
-    A[Ejecutar script] --> B[Opción 1: Eliminar apps]
-    B --> C[Opción 2: Configurar sistema]
-    C --> D[Opción 6: Actualizar sistema]
-    D --> E[Opción 8: Software opcional]
-    E --> F[¡Sistema transformado!]
+    A[19: Ver información] --> B[1: Eliminar apps]
+    B --> C[6: Actualizar]
+    C --> D[17: Perfil automático]
+    D --> E[8: Software opcional]
+    E --> F[Reiniciar]
 ```
 
----
-
-🛡️ Seguridad
-
-· ✅ No destructivo: Todos los cambios son reversibles
-· ✅ Confirmaciones: Cada acción crítica requiere confirmación
-· ✅ Backports opcional: No se modifica el sistema si no deseas
-· ✅ Revertir completo: Opción para volver a tu sabor de Ubuntu original
-· ✅ Seguro de dependencias: nunca se quita una app que arrastre piezas esenciales del sistema
+Si algo no te convence, la opción 18 deshace optimizaciones y quita programas, y la 9 vuelve a tu sabor original.
 
 ---
 
-📸 Capturas
+## 🛡️ Seguridad
+
+- ✅ **Reversible**: cada ajuste se puede deshacer (opción 18) y todo se puede revertir (opción 9).
+- ✅ **Confirmaciones**: cada acción importante pide confirmación y muestra qué se va a cambiar.
+- ✅ **Seguro de dependencias**: nunca quita una app que arrastre piezas esenciales del sistema.
+- ✅ **Copias antes de tocar el arranque**: `/etc/default/grub` se guarda antes del primer cambio, y `/etc/grub.d` entero antes de deshacer Grub Customizer.
+- ✅ **Kernel de respaldo**: el kernel oficial se conserva siempre y el que está en uso nunca se borra en caliente.
+- ✅ **Registro**: todo queda en `~/ubuntu-ultimate-tools.log`.
+
+---
+
+## 📸 Capturas
 
 En la carpeta [**screenshots**](screenshots/) están las capturas de todos los menús: eliminar apps,
 GPU, kernel, arranque y GRUB, red, energía, perfiles, deshacer e información del sistema.
 
 ---
 
-❓ Preguntas Frecuentes
+## ❓ Preguntas Frecuentes
 
-¿Funciona en mi sabor de Ubuntu?
+**¿Funciona en mi sabor de Ubuntu?**
 
 Sí: Ubuntu, Kubuntu, Xubuntu, Lubuntu, MATE, Budgie, Cinnamon, Unity, Studio, Edubuntu, Kylin y Server.
 El banner muestra qué sabor y escritorio detectó. En distribuciones basadas en Ubuntu (Mint, Pop!_OS...)
 no está probado.
 
-¿Qué pasa si elimino Snap?
+**¿Qué pasa si elimino Snap?**
 
 Firefox y la tienda Snap se eliminarán. En Ubuntu `apt install firefox` solo instala el snap, así que usa el PPA de Mozilla: `sudo add-apt-repository ppa:mozillateam/ppa`
 
-¿Cómo vuelvo atrás?
+**¿Cómo vuelvo atrás?**
 
-Usa la Opción 9 del menú principal. Reinstalará el meta-paquete de tu sabor con todas sus apps y restaurará Snap.
+Para quitar ajustes o programas sueltos, usa la opción 18. Para volver del todo, la opción 9: reinstala el meta-paquete de tu sabor con todas sus apps y restaura Snap.
 
-¿Usaba la versión anterior, "Kubuntu Lite"?
+**¿Usaba la versión anterior, "Kubuntu Lite"?**
 
 No hace falta hacer nada: la primera vez que ejecutes `ubuntu-ultimate-tools.sh`, pasa sola tu configuración
 (entradas ocultas de GRUB, programas instalados, ajustes de RAM, DNS, etc.) a los nombres nuevos.
 
-¿Necesito reinstalar después de ejecutar el script?
+**¿Necesito reinstalar después de ejecutar el script?**
 
 No es necesario, pero se recomienda reiniciar para aplicar todos los cambios correctamente.
 
 ---
 
-🤝 Contribuciones
+## 🤝 Contribuciones
 
 Las contribuciones son bienvenidas. Puedes:
 
@@ -446,7 +424,7 @@ Las contribuciones son bienvenidas. Puedes:
 
 ---
 
-📄 Licencia
+## 📄 Licencia
 
 Este proyecto está bajo la licencia **GNU GPL v3** (o posterior). Ver el archivo [LICENSE](LICENSE).
 
@@ -457,9 +435,7 @@ versión modificada, debe publicarse con su código fuente y bajo la misma licen
 
 <div align="center">
 
-👤 Autor
-
-Oldtheone – @george0884
+**👤 Autor:** Oldtheone – [george0884](https://github.com/george0884)
 
 </div>
 
