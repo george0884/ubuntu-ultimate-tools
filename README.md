@@ -21,7 +21,7 @@ sin importar el sabor. Al iniciar **detecta qué sabor y qué escritorio tienes*
 - ⚡ **Cambiar de kernel** (Liquorix, XanMod, oficial LTS/HWE) y **reparar o personalizar GRUB**
 - 🎮 **Optimizar** GPU, RAM, red, DNS y energía, o aplicar un **perfil automático** (gaming, productividad...)
 - 📦 **Instalar** software popular y la terminal Alacritty con tema Tokyo Night
-- ↩️ **Deshacer** cualquier cambio o **revertir** a tu sabor original
+- ↩️ **Deshacer** cualquier cambio o **revertir** a la distribución original
 - 🖥️ **Ver** toda la información del sistema y del hardware, con fastfetch e inxi sin instalar
 
 <div align="center">
@@ -238,8 +238,8 @@ disponible, se vuelve a la selección escribiendo números.
   Antes de desinstalar avisa si se quitará algo más por dependencias.
 - **Restaurar ajustes del sistema** (RAM, inotify, BBR...) a sus valores de fábrica.
 - **Desactivar ZRAM** y **quitar TLP** (vuelve el selector de energía del escritorio).
-- **Restaurar todos los ajustes** de una vez, sin desinstalar programas. "Revertir a tu sabor
-  original" (opción 9) también lo hace.
+- **Restaurar todos los ajustes** de una vez, sin desinstalar programas. "Revertir a
+  distribución original" (opción 9) también lo hace.
 
 ---
 
@@ -303,13 +303,26 @@ Dentro de la opción 3:
 
 ---
 
-## ↩️ Revertir (opción 9)
+## ↩️ Revertir a distribución original (opción 9)
 
-- Quita el PPA backports y **baja Plasma a la versión oficial** (quitar el PPA no lo hace solo).
-- Desbloquea Snap y reinstala el meta-paquete de tu sabor **con todas sus aplicaciones**.
+Deja tu Ubuntu como vino de fábrica, sea cual sea el sabor (muestra cuál detectó antes de empezar):
+
+- Reinstala el meta-paquete de tu sabor **con todas sus aplicaciones** (`kubuntu-desktop`, `xubuntu-desktop`,
+  `ubuntu-desktop-minimal`...). Si lo quitaste con la opción 2, recuerda cuál era: un Ubuntu mínimo no se
+  convierte en uno completo.
 - Reinstala todo lo que el script eliminó (incluidas dependencias); la lista está en
   `~/.local/share/ubuntu-ultimate-tools/paquetes-eliminados.txt`.
-- Restaura los íconos del escritorio y las aplicaciones fijadas del panel quitadas con la opción 14.
+- Desbloquea Snap y **reinstala las apps snap que se quitaron** (Firefox, Centro de aplicaciones, VS Code...).
+- Si instalaste el **Firefox .deb de Mozilla**, pregunta si vuelves al de Ubuntu o te quedas con el .deb.
+- Solo en Kubuntu, si activaste KDE Rolling Release: quita el PPA backports y **baja Plasma a la versión
+  oficial** (quitar el PPA no lo hace solo).
+- Restaura los íconos del escritorio, el panel o el dock, y el **tema** (los colores de Plasma y el perfil de
+  Konsole anteriores a Tokyo Night, o el estilo de GNOME anterior al modo oscuro).
+- Vuelve a fábrica todos los ajustes (RAM, DNS, ZRAM, energía, indexador...).
+- En Ubuntu Server hace lo que aplica: paquetes, Snap y ajustes.
+
+No cambia el kernel (opción 4) ni el arranque (opción 12). Los programas que instaló el script se quitan
+desde la opción 18.
 
 ---
 
@@ -365,7 +378,7 @@ graph LR
     E --> F[Reiniciar]
 ```
 
-Si algo no te convence, la opción 18 deshace optimizaciones y quita programas, y la 9 vuelve a tu sabor original.
+Si algo no te convence, la opción 18 deshace optimizaciones y quita programas, y la 9 vuelve a la distribución original.
 
 ---
 
@@ -383,7 +396,7 @@ Si algo no te convence, la opción 18 deshace optimizaciones y quita programas, 
 ## 📸 Capturas
 
 En la carpeta [**screenshots**](screenshots/) están las capturas de todos los menús: eliminar apps,
-GPU, kernel, arranque y GRUB, red, energía, perfiles, deshacer e información del sistema.
+GPU, kernel, revertir, arranque y GRUB, red, energía, perfiles, deshacer e información del sistema.
 
 ---
 

@@ -336,6 +336,13 @@ detect_flavor() {
         IFS='|' read -r _ _ meta _ _ marker <<< "$entry"
         if installed_pkgs "$meta" | grep -qx -- "$meta"; then found=$entry; break; fi
     done
+    # Si se quitó con la opción 2, queda anotado: así un Ubuntu mínimo no se confunde con el completo
+    if [ -z "$found" ] && [ -s "$REMOVED_LIST" ]; then
+        for entry in "${FLAVORS[@]}"; do
+            IFS='|' read -r _ _ meta _ _ _ <<< "$entry"
+            if grep -qx -- "$meta" "$REMOVED_LIST"; then found=$entry; break; fi
+        done
+    fi
     if [ -z "$found" ]; then
         for entry in "${FLAVORS[@]}"; do
             IFS='|' read -r _ _ _ _ _ marker <<< "$entry"
@@ -1717,8 +1724,25 @@ write_tokyo_night_konsole() {
         > "$dir/TokyoNight.profile"
 }
 
+THEME_BACKUP="$STATE_DIR/tema-anterior.txt"
+
+# Anota un ajuste del tema tal como estaba antes del primer cambio (para "Revertir")
+save_theme_value() {
+    local key="$1" value="$2"
+    mkdir -p "$STATE_DIR"
+    grep -qs "^$key=" "$THEME_BACKUP" || echo "$key=$value" >> "$THEME_BACKUP"
+}
+
+theme_value() { sed -n "s/^$1=//p" "$THEME_BACKUP" 2>/dev/null | head -n1; }
+
+kde_color_scheme() { sed -n '/^\[General\]/,/^\[/ s/^ColorScheme=//p' "$HOME/.config/kdeglobals" 2>/dev/null | head -n1; }
+
 install_tokyo_night_theme() {
     echo -e "${CYAN}🎨 Aplicando tema Tokyo Night...${NC}"
+    local before
+    before=$(kde_color_scheme)
+    [ "$before" != TokyoNight ] && save_theme_value kde-colores "${before:-BreezeLight}"
+    save_theme_value konsole-perfil "$(sed -n 's/^DefaultProfile=//p' "$HOME/.config/konsolerc" 2>/dev/null)"
     write_tokyo_night_colors
     write_tokyo_night_konsole
 
@@ -1741,12 +1765,14 @@ install_tokyo_night_theme() {
     else
         echo -e "${CYAN}ℹ En Konsole: Configuración → Gestionar perfiles → Tokyo Night${NC}"
     fi
-    echo -e "${CYAN}ℹ Para volver a los colores originales: Preferencias del sistema → Colores → Breeze${NC}"
+    echo -e "${CYAN}ℹ Para volver a los colores originales: opción 9 (Revertir) o Preferencias del sistema → Colores${NC}"
 }
 
 # Modo oscuro de GNOME: estilo oscuro y, con el tema Yaru de Ubuntu, su variante oscura
 gnome_dark_mode() {
     local theme
+    save_theme_value gnome-estilo "$(gsettings get org.gnome.desktop.interface color-scheme 2>/dev/null)"
+    save_theme_value gnome-tema "$(gsettings get org.gnome.desktop.interface gtk-theme 2>/dev/null)"
     run "No se pudo activar el modo oscuro" gsettings set org.gnome.desktop.interface color-scheme prefer-dark || return 1
     theme=$(gsettings get org.gnome.desktop.interface gtk-theme 2>/dev/null | tr -d "'")
     if [[ "$theme" == Yaru* && "$theme" != *-dark ]]; then
@@ -2125,67 +2151,151 @@ install_missing_pkgs() {
     log_success "Paquetes reinstalados"
 }
 
+# Vuelve el tema del escritorio al de antes de la opción 7 (Tokyo Night o modo oscuro)
+restore_theme() {
+    local kwrite value
+    kwrite=$(command -v kwriteconfig6 || command -v kwriteconfig5)
+    case $DESKTOP in
+        kde)
+            if [ "$(kde_color_scheme)" = TokyoNight ]; then
+                value=$(theme_value kde-colores)
+                run "No se pudieron restaurar los colores de Plasma" plasma-apply-colorscheme "${value:-BreezeLight}" \
+                    && log_success "Colores de Plasma restaurados (${value:-BreezeLight})"
+            else
+                echo -e "  ${GREEN}✓ Plasma no usa Tokyo Night${NC}"
+            fi
+            if [ -n "$kwrite" ] && grep -qs '^DefaultProfile=TokyoNight.profile' "$HOME/.config/konsolerc"; then
+                value=$(theme_value konsole-perfil)
+                if [ -n "$value" ]; then
+                    "$kwrite" --file konsolerc --group "Desktop Entry" --key DefaultProfile "$value"
+                else
+                    "$kwrite" --file konsolerc --group "Desktop Entry" --key DefaultProfile --delete
+                fi
+                log_success "Konsole vuelve a su perfil anterior"
+            fi
+            rm -f "$HOME/.local/share/color-schemes/TokyoNight.colors" \
+                "$HOME/.local/share/konsole/TokyoNight.colorscheme" "$HOME/.local/share/konsole/TokyoNight.profile"
+            ;;
+        gnome)
+            if grep -qs '^gnome-' "$THEME_BACKUP"; then
+                for value in color-scheme:gnome-estilo gtk-theme:gnome-tema; do
+                    if [ -n "$(theme_value "${value#*:}")" ]; then
+                        gsettings set org.gnome.desktop.interface "${value%%:*}" "$(theme_value "${value#*:}")"
+                    fi
+                done
+                log_success "Tema de GNOME restaurado"
+            else
+                echo -e "  ${GREEN}✓ El script no cambió el tema de GNOME${NC}"
+            fi
+            ;;
+        *) echo -e "  ${GREEN}✓ El script no cambia el tema de ${DESKTOP_NAME}${NC}" ;;
+    esac
+    rm -f "$THEME_BACKUP"
+}
+
+# Quita el repositorio de Mozilla (Firefox .deb) y vuelve al Firefox de Ubuntu
+restore_ubuntu_firefox() {
+    sudo rm -f /etc/apt/sources.list.d/mozilla.list /etc/apt/preferences.d/mozilla \
+        /etc/apt/keyrings/packages.mozilla.org.asc
+    apt_update force
+    # El paquete de Ubuntu instala el snap; los marcadores de ~/.mozilla se importan al abrirlo
+    if installed_pkgs firefox | grep -qx firefox; then
+        apt_install --allow-downgrades firefox && log_success "Firefox de Ubuntu reinstalado"
+    fi
+}
+
 revert_changes() {
     clear
     echo -e "${RED}${BOLD}"
     echo "╔══════════════════════════════════════════════════════════════════╗"
-    echo "║                    ↩️ REVERTIR A KUBUNTU                         ║"
+    echo "║                ↩️ REVERTIR A DISTRIBUCIÓN ORIGINAL               ║"
     echo "╚══════════════════════════════════════════════════════════════════╝"
     echo -e "${NC}"
+    echo -e "${CYAN}🐧 Distribución detectada: ${FLAVOR_NAME} (${DESKTOP_NAME})${NC}"
 
-    local removed_count=0
+    local removed_count=0 backports=false mozilla=false keep_firefox=false
     [ -f "$REMOVED_LIST" ] && removed_count=$(wc -l < "$REMOVED_LIST")
+    grep -rqs 'kubuntu-ppa/backports' /etc/apt/sources.list /etc/apt/sources.list.d/ && backports=true
+    [ -f /etc/apt/sources.list.d/mozilla.list ] && mozilla=true
 
     echo -e "\n${RED}📋 Esto hará:${NC}"
-    echo -e "  • Quitar el PPA backports (Rolling Release) y volver Plasma a la versión oficial"
-    echo -e "  • Desbloquear y reinstalar Snap"
-    [ -n "$FLAVOR_META" ] && echo -e "  • Reinstalar ${FLAVOR_META} y todas sus aplicaciones"
-    echo -e "  • Reinstalar los $removed_count paquetes eliminados con este script"
-    echo -e "  • Restaurar los accesos directos del escritorio y del panel"
+    $backports && echo -e "  • Quitar KDE Rolling Release (PPA backports) y volver Plasma a la versión oficial"
+    echo -e "  • Desbloquear y reinstalar Snap y las apps snap que se quitaron"
+    $mozilla && echo -e "  • Volver al Firefox de Ubuntu (se pregunta antes)"
+    if [ -n "$FLAVOR_META" ]; then
+        echo -e "  • Reinstalar ${FLAVOR_META} y todas las apps de ${FLAVOR_NAME}"
+    fi
+    [ "$removed_count" -gt 0 ] && echo -e "  • Reinstalar los $removed_count paquetes eliminados con este script"
+    if has_desktop; then
+        echo -e "  • Restaurar los accesos directos del escritorio y del panel"
+        echo -e "  • Restaurar el tema del escritorio (si el script lo cambió)"
+    fi
     echo -e "  • Volver a los valores de fábrica los ajustes del script (RAM, DNS, ZRAM, energía...)"
+    echo -e "\n${YELLOW}ℹ No cambia el kernel (opción 4) ni el arranque (opción 12). Los programas que instaló${NC}"
+    echo -e "${YELLOW}  el script se quitan desde la opción 18.${NC}"
     echo ""
 
-    if ! confirm "${RED}⚠ ¿Revertir a ${FLAVOR_NAME} original?${NC}"; then
+    if ! confirm "${RED}⚠ ¿Revertir a la distribución original (${FLAVOR_NAME})?${NC}"; then
         return 0
     fi
+    if $mozilla && ! confirm "${YELLOW}¿Volver al Firefox de Ubuntu (snap)? Si dices que no, sigues con el de Mozilla (.deb)${NC}"; then
+        keep_firefox=true
+    fi
 
-    echo -e "${RED}[1/5] Eliminando Rolling Release...${NC}"
-    if grep -rqs 'kubuntu-ppa/backports' /etc/apt/sources.list /etc/apt/sources.list.d/; then
+    echo -e "${RED}[1/6] Repositorios...${NC}"
+    if $backports; then
         run "No se pudo quitar el PPA backports" sudo add-apt-repository --remove -y ppa:kubuntu-ppa/backports
         apt_update force
         downgrade_orphaned_ppa_pkgs
     else
-        echo -e "  ${GREEN}✓ El PPA backports no está activo${NC}"
+        echo -e "  ${GREEN}✓ KDE Rolling Release no está activo${NC}"
         apt_update
     fi
 
-    echo -e "${RED}[2/5] Desbloqueando Snap...${NC}"
+    echo -e "${RED}[2/6] Desbloqueando Snap...${NC}"
     # La eliminación nuclear (opción 10) bloquea snapd; hay que desbloquearlo antes
     sudo apt-mark unhold snapd >> "$LOG_FILE" 2>&1
     sudo rm -f /etc/apt/preferences.d/nosnap.pref
+    if $mozilla && ! $keep_firefox; then
+        restore_ubuntu_firefox
+    fi
 
-    echo -e "${RED}[3/5] Reinstalando ${FLAVOR_META:-el sistema} y paquetes eliminados...${NC}"
+    echo -e "${RED}[3/6] Reinstalando paquetes de ${FLAVOR_NAME}...${NC}"
     local pkgs=()
-    mapfile -t pkgs < <(flavor_meta_pkgs)
-    [ -n "$FLAVOR_META" ] && pkgs+=("$FLAVOR_META")
+    if [ -n "$FLAVOR_META" ]; then
+        mapfile -t pkgs < <(flavor_meta_pkgs)
+        pkgs+=("$FLAVOR_META")
+    fi
     pkgs+=(snapd)
     [ -f "$REMOVED_LIST" ] && mapfile -t -O "${#pkgs[@]}" pkgs < "$REMOVED_LIST"
+    # Con el Firefox de Mozilla, no se reinstala el de Ubuntu (que lo cambiaría por el snap)
+    if $keep_firefox; then
+        mapfile -t pkgs < <(printf '%s\n' "${pkgs[@]}" | grep -vx firefox)
+    fi
     if install_missing_pkgs "${pkgs[@]}"; then
         rm -f "$REMOVED_LIST"
     fi
     run "No se pudo iniciar snapd" sudo systemctl enable --now snapd.socket
 
-    echo -e "${RED}[4/5] Restaurando accesos directos...${NC}"
-    restore_desktop_shortcuts
-    restore_panel_launchers
+    echo -e "${RED}[4/6] Reinstalando apps snap...${NC}"
+    if $keep_firefox; then restore_removed_snaps firefox; else restore_removed_snaps; fi
 
-    echo -e "${RED}[5/5] Restaurando ajustes y limpiando configuraciones...${NC}"
+    echo -e "${RED}[5/6] Restaurando escritorio...${NC}"
+    if has_desktop; then
+        restore_desktop_shortcuts
+        restore_panel_launchers
+        restore_theme
+    else
+        echo -e "  ${GREEN}✓ Sin escritorio: no hay accesos ni tema que restaurar${NC}"
+    fi
+
+    echo -e "${RED}[6/6] Restaurando ajustes y limpiando configuraciones...${NC}"
     restore_all_tweaks
     rm -rf ~/.config/alacritty
     rm -f "$HOME/.config/environment.d/90-mangohud.conf"
 
     echo ""
-    echo -e "${GREEN}✓ Sistema revertido${NC}"
+    echo -e "${GREEN}✓ ${FLAVOR_NAME} revertido a su estado original${NC}"
     echo -e "${YELLOW}⚠ Reinicia para completar${NC}"
     pause
 }
@@ -2207,6 +2317,54 @@ migrate_snap_profiles() {
     done
 }
 
+REMOVED_SNAPS="$STATE_DIR/snaps-eliminados.txt"
+
+# Anota las apps snap instaladas ("nombre" o "nombre classic") para poder reinstalarlas
+record_removed_snaps() {
+    local list
+    # Solo apps: los runtimes (temas, bibliotecas de GNOME/KDE, mesa...) llegan solos con ellas
+    list=$(snap list 2>/dev/null | awk 'NR>1 && $NF !~ /base|core|snapd/ && $1 !~ /^(gtk-common-themes|gtk2-common-themes|gnome-[0-9]|kf[56]-|mesa-|bare$)/ {
+        print $1 ($NF ~ /classic/ ? " classic" : "")}')
+    [ -n "$list" ] || return 0
+    mkdir -p "$STATE_DIR"
+    echo "$list" >> "$REMOVED_SNAPS"
+    sort -u -o "$REMOVED_SNAPS" "$REMOVED_SNAPS"
+}
+
+# Reinstala las apps snap que quitó la eliminación nuclear (opción 10 o perfil minimalista).
+# Los argumentos son snaps que no se reinstalan (p. ej. firefox si se queda el de Mozilla).
+restore_removed_snaps() {
+    local name mode failed=() wanted=() skip=" $* "
+    if [ -s "$REMOVED_SNAPS" ]; then
+        mapfile -t wanted < "$REMOVED_SNAPS"
+    elif [[ "$FLAVOR" == ubuntu || "$FLAVOR" == edubuntu ]]; then
+        # Versiones anteriores del script no las anotaban: las que trae Ubuntu de fábrica
+        wanted=(snap-store firmware-updater snapd-desktop-integration)
+    fi
+    if [ ${#wanted[@]} -eq 0 ]; then
+        echo -e "  ${GREEN}✓ No hay apps snap que reinstalar${NC}"
+        return 0
+    fi
+    command -v snap &> /dev/null || { log_warning "Snap no está instalado: no se reinstalan sus apps"; return 1; }
+    sudo snap wait system seed.loaded >> "$LOG_FILE" 2>&1
+    for name in "${wanted[@]}"; do
+        read -r name mode <<< "$name"
+        [[ "$skip" == *" $name "* ]] && continue
+        if snap list "$name" &> /dev/null; then
+            echo -e "  ${GREEN}✓ $name ya está instalado${NC}"
+        elif sudo snap install "$name" ${mode:+--classic} >> "$LOG_FILE" 2>&1; then
+            echo -e "  ${GREEN}✓ Reinstalado: $name${NC}"
+        else
+            failed+=("$name")
+        fi
+    done
+    if [ ${#failed[@]} -gt 0 ]; then
+        log_error "No se pudieron reinstalar los snaps: ${failed[*]}"
+        return 1
+    fi
+    rm -f "$REMOVED_SNAPS"
+}
+
 do_snap_removal() {
     echo -e "${RED}☢️ Iniciando eliminación nuclear de Snap...${NC}\n"
 
@@ -2215,6 +2373,7 @@ do_snap_removal() {
 
     # Los snaps se eliminan mientras snapd sigue activo: sin el demonio 'snap remove' no funciona
     echo -e "${RED}[1/11] Eliminando paquetes snap de aplicaciones...${NC}"
+    record_removed_snaps
     local snap_name
     for snap_name in $(snap list 2>/dev/null | awk 'NR>1 && $NF !~ /base|core|snapd/ {print $1}'); do
         run "No se pudo eliminar el snap $snap_name" sudo snap remove --purge "$snap_name"
@@ -2378,6 +2537,9 @@ reinstall_snap() {
 
     echo -e "${GREEN}[5/5] Iniciando servicios...${NC}"
     run "No se pudo iniciar snapd" sudo systemctl enable --now snapd.socket snapd.service
+    if [ -s "$REMOVED_SNAPS" ] && confirm "${GREEN}¿Reinstalar también las apps snap que se quitaron ($(wc -l < "$REMOVED_SNAPS"))?${NC}"; then
+        restore_removed_snaps
+    fi
 
     echo ""
     echo -e "${GREEN}✓ Snap reinstalado correctamente${NC}"
@@ -4926,7 +5088,7 @@ undo_menu() {
         echo -e "  ${RED}4)${NC} 🔋 Quitar TLP y volver al selector de energía del escritorio"
         echo -e "  ${RED}5)${NC} 📋 Ver qué AJUSTES están cambiados y restaurarlos todos (no toca programas)"
         echo -e "\n  ${RED}0)${NC} 🔙 Volver"
-        echo -e "\n${YELLOW}ℹ Otros cambios se deshacen en su menú: kernel (4), ${FLAVOR_NAME} original (9),${NC}"
+        echo -e "\n${YELLOW}ℹ Otros cambios se deshacen en su menú: kernel (4), distribución original (9),${NC}"
         echo -e "${YELLOW}  Snap (11), accesos directos (14), DNS/BBR/Wi-Fi (15), energía e indexador (16)${NC}\n"
         read -r -p "📌 Opción (0-5): " undo_option
 
@@ -5456,7 +5618,7 @@ main_menu() {
         echo -e "  ${CYAN} 6)${NC} 🔄 ACTUALIZAR SISTEMA (update/upgrade/clean)"
         echo -e "  ${CYAN} 7)${NC} 🖥️  Instalar Alacritty (terminal GPU) y temas"
         echo -e "  ${CYAN} 8)${NC} 📦 Instalar software opcional"
-        echo -e "  ${CYAN} 9)${NC} ↩️  Revertir a ${FLAVOR_NAME} original"
+        echo -e "  ${CYAN} 9)${NC} ↩️  Revertir a distribución original"
         echo -e "  ${CYAN}10)${NC} ☢️  ELIMINACION NUCLEAR DE SNAP"
         echo -e "  ${CYAN}11)${NC} 🔄 REINSTALAR SNAP"
         echo -e "  ${CYAN}12)${NC} 🔧 ARRANQUE: reparar y personalizar GRUB/EFI"
