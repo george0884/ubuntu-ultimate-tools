@@ -55,6 +55,12 @@ sabor y el escritorio detectados, y las listas muestran solo lo que está instal
 
 ---
 
+## Revertir a distribución original (opción 9)
+
+![Revertir a distribución original (opción 9)](16-revertir.png)
+
+---
+
 ## Quitar accesos directos (opción 14)
 
 ![Quitar accesos directos (opción 14)](09-accesos-directos.png)

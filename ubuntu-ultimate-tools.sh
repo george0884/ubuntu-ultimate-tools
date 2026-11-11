@@ -336,6 +336,13 @@ detect_flavor() {
         IFS='|' read -r _ _ meta _ _ marker <<< "$entry"
         if installed_pkgs "$meta" | grep -qx -- "$meta"; then found=$entry; break; fi
     done
+    # Si se quitó con la opción 2, queda anotado: así un Ubuntu mínimo no se confunde con el completo
+    if [ -z "$found" ] && [ -s "$REMOVED_LIST" ]; then
+        for entry in "${FLAVORS[@]}"; do
+            IFS='|' read -r _ _ meta _ _ _ <<< "$entry"
+            if grep -qx -- "$meta" "$REMOVED_LIST"; then found=$entry; break; fi
+        done
+    fi
     if [ -z "$found" ]; then
         for entry in "${FLAVORS[@]}"; do
             IFS='|' read -r _ _ _ _ _ marker <<< "$entry"
@@ -1717,8 +1724,25 @@ write_tokyo_night_konsole() {
         > "$dir/TokyoNight.profile"
 }
 
+THEME_BACKUP="$STATE_DIR/tema-anterior.txt"
+
+# Anota un ajuste del tema tal como estaba antes del primer cambio (para "Revertir")
+save_theme_value() {
+    local key="$1" value="$2"
+    mkdir -p "$STATE_DIR"
+    grep -qs "^$key=" "$THEME_BACKUP" || echo "$key=$value" >> "$THEME_BACKUP"
+}
+
+theme_value() { sed -n "s/^$1=//p" "$THEME_BACKUP" 2>/dev/null | head -n1; }
+
+kde_color_scheme() { sed -n '/^\[General\]/,/^\[/ s/^ColorScheme=//p' "$HOME/.config/kdeglobals" 2>/dev/null | head -n1; }
+
 install_tokyo_night_theme() {
     echo -e "${CYAN}🎨 Aplicando tema Tokyo Night...${NC}"
+    local before
+    before=$(kde_color_scheme)
+    [ "$before" != TokyoNight ] && save_theme_value kde-colores "${before:-BreezeLight}"
+    save_theme_value konsole-perfil "$(sed -n 's/^DefaultProfile=//p' "$HOME/.config/konsolerc" 2>/dev/null)"
     write_tokyo_night_colors
     write_tokyo_night_konsole
 
@@ -1741,12 +1765,14 @@ install_tokyo_night_theme() {
     else
         echo -e "${CYAN}ℹ En Konsole: Configuración → Gestionar perfiles → Tokyo Night${NC}"
     fi
-    echo -e "${CYAN}ℹ Para volver a los colores originales: Preferencias del sistema → Colores → Breeze${NC}"
+    echo -e "${CYAN}ℹ Para volver a los colores originales: opción 9 (Revertir) o Preferencias del sistema → Colores${NC}"
 }
 
 # Modo oscuro de GNOME: estilo oscuro y, con el tema Yaru de Ubuntu, su variante oscura
 gnome_dark_mode() {
     local theme
+    save_theme_value gnome-estilo "$(gsettings get org.gnome.desktop.interface color-scheme 2>/dev/null)"
+    save_theme_value gnome-tema "$(gsettings get org.gnome.desktop.interface gtk-theme 2>/dev/null)"
     run "No se pudo activar el modo oscuro" gsettings set org.gnome.desktop.interface color-scheme prefer-dark || return 1
     theme=$(gsettings get org.gnome.desktop.interface gtk-theme 2>/dev/null | tr -d "'")
     if [[ "$theme" == Yaru* && "$theme" != *-dark ]]; then
@@ -1845,6 +1871,8 @@ select_optional_software() {
         "gparted|💾 GParted"
         "vim|⌨️ Vim"
         "discord|🎮 Discord"
+        "steam|🎮 Steam (con Proton para juegos de Windows)"
+        "proton-ge|🍷 Proton-GE (Proton de la comunidad, más compatible)"
         "spotify|🎵 Spotify"
         "obs-studio|🎥 OBS Studio"
         "emojier|😊 Selector de emojis"
@@ -1854,6 +1882,8 @@ select_optional_software() {
     # Se marca lo que ya está instalado para no reinstalarlo por error
     local installed=() entries=() app pkg
     mapfile -t installed < <(installed_pkgs "${software[@]%%|*}" spotify-client kdeplasma-addons)
+    steam_installed && installed+=(steam)
+    [ -n "$(ls -d "$(steam_dir)"/compatibilitytools.d/GE-Proton* 2>/dev/null)" ] && installed+=(proton-ge)
     for app in "${software[@]}"; do
         pkg=${app%%|*}
         case $pkg in
@@ -1975,7 +2005,7 @@ setup_spotify_repo() {
 # Discord) se descargan en paralelo mientras se actualiza la lista de paquetes.
 install_optional_with_progress() {
     local repo=() deb_names=() deb_urls=() pids=() debs=() failed=() app i
-    local repo_changed=false tmp
+    local repo_changed=false tmp want_steam=false want_ge=false
     tmp=$(mktemp -d)
     chmod 755 "$tmp"
 
@@ -2006,6 +2036,9 @@ install_optional_with_progress() {
                     failed+=(spotify)
                 fi ;;
             "emojier") repo+=(kdeplasma-addons) ;;
+            # Necesitan pasos propios (32 bits, verificación): se instalan al final
+            "steam") want_steam=true ;;
+            "proton-ge") want_ge=true ;;
             *) repo+=("$app") ;;
         esac
     done
@@ -2064,6 +2097,9 @@ install_optional_with_progress() {
         fi
     fi
     rm -rf "$tmp"
+
+    if $want_steam; then install_steam || failed+=(steam); fi
+    if $want_ge; then install_proton_ge || failed+=(proton-ge); fi
 
     if [ ${#failed[@]} -gt 0 ]; then
         log_error "No se pudieron instalar: ${failed[*]}"
@@ -2125,67 +2161,151 @@ install_missing_pkgs() {
     log_success "Paquetes reinstalados"
 }
 
+# Vuelve el tema del escritorio al de antes de la opción 7 (Tokyo Night o modo oscuro)
+restore_theme() {
+    local kwrite value
+    kwrite=$(command -v kwriteconfig6 || command -v kwriteconfig5)
+    case $DESKTOP in
+        kde)
+            if [ "$(kde_color_scheme)" = TokyoNight ]; then
+                value=$(theme_value kde-colores)
+                run "No se pudieron restaurar los colores de Plasma" plasma-apply-colorscheme "${value:-BreezeLight}" \
+                    && log_success "Colores de Plasma restaurados (${value:-BreezeLight})"
+            else
+                echo -e "  ${GREEN}✓ Plasma no usa Tokyo Night${NC}"
+            fi
+            if [ -n "$kwrite" ] && grep -qs '^DefaultProfile=TokyoNight.profile' "$HOME/.config/konsolerc"; then
+                value=$(theme_value konsole-perfil)
+                if [ -n "$value" ]; then
+                    "$kwrite" --file konsolerc --group "Desktop Entry" --key DefaultProfile "$value"
+                else
+                    "$kwrite" --file konsolerc --group "Desktop Entry" --key DefaultProfile --delete
+                fi
+                log_success "Konsole vuelve a su perfil anterior"
+            fi
+            rm -f "$HOME/.local/share/color-schemes/TokyoNight.colors" \
+                "$HOME/.local/share/konsole/TokyoNight.colorscheme" "$HOME/.local/share/konsole/TokyoNight.profile"
+            ;;
+        gnome)
+            if grep -qs '^gnome-' "$THEME_BACKUP"; then
+                for value in color-scheme:gnome-estilo gtk-theme:gnome-tema; do
+                    if [ -n "$(theme_value "${value#*:}")" ]; then
+                        gsettings set org.gnome.desktop.interface "${value%%:*}" "$(theme_value "${value#*:}")"
+                    fi
+                done
+                log_success "Tema de GNOME restaurado"
+            else
+                echo -e "  ${GREEN}✓ El script no cambió el tema de GNOME${NC}"
+            fi
+            ;;
+        *) echo -e "  ${GREEN}✓ El script no cambia el tema de ${DESKTOP_NAME}${NC}" ;;
+    esac
+    rm -f "$THEME_BACKUP"
+}
+
+# Quita el repositorio de Mozilla (Firefox .deb) y vuelve al Firefox de Ubuntu
+restore_ubuntu_firefox() {
+    sudo rm -f /etc/apt/sources.list.d/mozilla.list /etc/apt/preferences.d/mozilla \
+        /etc/apt/keyrings/packages.mozilla.org.asc
+    apt_update force
+    # El paquete de Ubuntu instala el snap; los marcadores de ~/.mozilla se importan al abrirlo
+    if installed_pkgs firefox | grep -qx firefox; then
+        apt_install --allow-downgrades firefox && log_success "Firefox de Ubuntu reinstalado"
+    fi
+}
+
 revert_changes() {
     clear
     echo -e "${RED}${BOLD}"
     echo "╔══════════════════════════════════════════════════════════════════╗"
-    echo "║                    ↩️ REVERTIR A KUBUNTU                         ║"
+    echo "║                ↩️ REVERTIR A DISTRIBUCIÓN ORIGINAL               ║"
     echo "╚══════════════════════════════════════════════════════════════════╝"
     echo -e "${NC}"
+    echo -e "${CYAN}🐧 Distribución detectada: ${FLAVOR_NAME} (${DESKTOP_NAME})${NC}"
 
-    local removed_count=0
+    local removed_count=0 backports=false mozilla=false keep_firefox=false
     [ -f "$REMOVED_LIST" ] && removed_count=$(wc -l < "$REMOVED_LIST")
+    grep -rqs 'kubuntu-ppa/backports' /etc/apt/sources.list /etc/apt/sources.list.d/ && backports=true
+    [ -f /etc/apt/sources.list.d/mozilla.list ] && mozilla=true
 
     echo -e "\n${RED}📋 Esto hará:${NC}"
-    echo -e "  • Quitar el PPA backports (Rolling Release) y volver Plasma a la versión oficial"
-    echo -e "  • Desbloquear y reinstalar Snap"
-    [ -n "$FLAVOR_META" ] && echo -e "  • Reinstalar ${FLAVOR_META} y todas sus aplicaciones"
-    echo -e "  • Reinstalar los $removed_count paquetes eliminados con este script"
-    echo -e "  • Restaurar los accesos directos del escritorio y del panel"
+    $backports && echo -e "  • Quitar KDE Rolling Release (PPA backports) y volver Plasma a la versión oficial"
+    echo -e "  • Desbloquear y reinstalar Snap y las apps snap que se quitaron"
+    $mozilla && echo -e "  • Volver al Firefox de Ubuntu (se pregunta antes)"
+    if [ -n "$FLAVOR_META" ]; then
+        echo -e "  • Reinstalar ${FLAVOR_META} y todas las apps de ${FLAVOR_NAME}"
+    fi
+    [ "$removed_count" -gt 0 ] && echo -e "  • Reinstalar los $removed_count paquetes eliminados con este script"
+    if has_desktop; then
+        echo -e "  • Restaurar los accesos directos del escritorio y del panel"
+        echo -e "  • Restaurar el tema del escritorio (si el script lo cambió)"
+    fi
     echo -e "  • Volver a los valores de fábrica los ajustes del script (RAM, DNS, ZRAM, energía...)"
+    echo -e "\n${YELLOW}ℹ No cambia el kernel (opción 4) ni el arranque (opción 12). Los programas que instaló${NC}"
+    echo -e "${YELLOW}  el script se quitan desde la opción 18.${NC}"
     echo ""
 
-    if ! confirm "${RED}⚠ ¿Revertir a ${FLAVOR_NAME} original?${NC}"; then
+    if ! confirm "${RED}⚠ ¿Revertir a la distribución original (${FLAVOR_NAME})?${NC}"; then
         return 0
     fi
+    if $mozilla && ! confirm "${YELLOW}¿Volver al Firefox de Ubuntu (snap)? Si dices que no, sigues con el de Mozilla (.deb)${NC}"; then
+        keep_firefox=true
+    fi
 
-    echo -e "${RED}[1/5] Eliminando Rolling Release...${NC}"
-    if grep -rqs 'kubuntu-ppa/backports' /etc/apt/sources.list /etc/apt/sources.list.d/; then
+    echo -e "${RED}[1/6] Repositorios...${NC}"
+    if $backports; then
         run "No se pudo quitar el PPA backports" sudo add-apt-repository --remove -y ppa:kubuntu-ppa/backports
         apt_update force
         downgrade_orphaned_ppa_pkgs
     else
-        echo -e "  ${GREEN}✓ El PPA backports no está activo${NC}"
+        echo -e "  ${GREEN}✓ KDE Rolling Release no está activo${NC}"
         apt_update
     fi
 
-    echo -e "${RED}[2/5] Desbloqueando Snap...${NC}"
+    echo -e "${RED}[2/6] Desbloqueando Snap...${NC}"
     # La eliminación nuclear (opción 10) bloquea snapd; hay que desbloquearlo antes
     sudo apt-mark unhold snapd >> "$LOG_FILE" 2>&1
     sudo rm -f /etc/apt/preferences.d/nosnap.pref
+    if $mozilla && ! $keep_firefox; then
+        restore_ubuntu_firefox
+    fi
 
-    echo -e "${RED}[3/5] Reinstalando ${FLAVOR_META:-el sistema} y paquetes eliminados...${NC}"
+    echo -e "${RED}[3/6] Reinstalando paquetes de ${FLAVOR_NAME}...${NC}"
     local pkgs=()
-    mapfile -t pkgs < <(flavor_meta_pkgs)
-    [ -n "$FLAVOR_META" ] && pkgs+=("$FLAVOR_META")
+    if [ -n "$FLAVOR_META" ]; then
+        mapfile -t pkgs < <(flavor_meta_pkgs)
+        pkgs+=("$FLAVOR_META")
+    fi
     pkgs+=(snapd)
     [ -f "$REMOVED_LIST" ] && mapfile -t -O "${#pkgs[@]}" pkgs < "$REMOVED_LIST"
+    # Con el Firefox de Mozilla, no se reinstala el de Ubuntu (que lo cambiaría por el snap)
+    if $keep_firefox; then
+        mapfile -t pkgs < <(printf '%s\n' "${pkgs[@]}" | grep -vx firefox)
+    fi
     if install_missing_pkgs "${pkgs[@]}"; then
         rm -f "$REMOVED_LIST"
     fi
     run "No se pudo iniciar snapd" sudo systemctl enable --now snapd.socket
 
-    echo -e "${RED}[4/5] Restaurando accesos directos...${NC}"
-    restore_desktop_shortcuts
-    restore_panel_launchers
+    echo -e "${RED}[4/6] Reinstalando apps snap...${NC}"
+    if $keep_firefox; then restore_removed_snaps firefox; else restore_removed_snaps; fi
 
-    echo -e "${RED}[5/5] Restaurando ajustes y limpiando configuraciones...${NC}"
+    echo -e "${RED}[5/6] Restaurando escritorio...${NC}"
+    if has_desktop; then
+        restore_desktop_shortcuts
+        restore_panel_launchers
+        restore_theme
+    else
+        echo -e "  ${GREEN}✓ Sin escritorio: no hay accesos ni tema que restaurar${NC}"
+    fi
+
+    echo -e "${RED}[6/6] Restaurando ajustes y limpiando configuraciones...${NC}"
     restore_all_tweaks
     rm -rf ~/.config/alacritty
     rm -f "$HOME/.config/environment.d/90-mangohud.conf"
 
     echo ""
-    echo -e "${GREEN}✓ Sistema revertido${NC}"
+    echo -e "${GREEN}✓ ${FLAVOR_NAME} revertido a su estado original${NC}"
     echo -e "${YELLOW}⚠ Reinicia para completar${NC}"
     pause
 }
@@ -2207,6 +2327,54 @@ migrate_snap_profiles() {
     done
 }
 
+REMOVED_SNAPS="$STATE_DIR/snaps-eliminados.txt"
+
+# Anota las apps snap instaladas ("nombre" o "nombre classic") para poder reinstalarlas
+record_removed_snaps() {
+    local list
+    # Solo apps: los runtimes (temas, bibliotecas de GNOME/KDE, mesa...) llegan solos con ellas
+    list=$(snap list 2>/dev/null | awk 'NR>1 && $NF !~ /base|core|snapd/ && $1 !~ /^(gtk-common-themes|gtk2-common-themes|gnome-[0-9]|kf[56]-|mesa-|bare$)/ {
+        print $1 ($NF ~ /classic/ ? " classic" : "")}')
+    [ -n "$list" ] || return 0
+    mkdir -p "$STATE_DIR"
+    echo "$list" >> "$REMOVED_SNAPS"
+    sort -u -o "$REMOVED_SNAPS" "$REMOVED_SNAPS"
+}
+
+# Reinstala las apps snap que quitó la eliminación nuclear (opción 10 o perfil minimalista).
+# Los argumentos son snaps que no se reinstalan (p. ej. firefox si se queda el de Mozilla).
+restore_removed_snaps() {
+    local name mode failed=() wanted=() skip=" $* "
+    if [ -s "$REMOVED_SNAPS" ]; then
+        mapfile -t wanted < "$REMOVED_SNAPS"
+    elif [[ "$FLAVOR" == ubuntu || "$FLAVOR" == edubuntu ]]; then
+        # Versiones anteriores del script no las anotaban: las que trae Ubuntu de fábrica
+        wanted=(snap-store firmware-updater snapd-desktop-integration)
+    fi
+    if [ ${#wanted[@]} -eq 0 ]; then
+        echo -e "  ${GREEN}✓ No hay apps snap que reinstalar${NC}"
+        return 0
+    fi
+    command -v snap &> /dev/null || { log_warning "Snap no está instalado: no se reinstalan sus apps"; return 1; }
+    sudo snap wait system seed.loaded >> "$LOG_FILE" 2>&1
+    for name in "${wanted[@]}"; do
+        read -r name mode <<< "$name"
+        [[ "$skip" == *" $name "* ]] && continue
+        if snap list "$name" &> /dev/null; then
+            echo -e "  ${GREEN}✓ $name ya está instalado${NC}"
+        elif sudo snap install "$name" ${mode:+--classic} >> "$LOG_FILE" 2>&1; then
+            echo -e "  ${GREEN}✓ Reinstalado: $name${NC}"
+        else
+            failed+=("$name")
+        fi
+    done
+    if [ ${#failed[@]} -gt 0 ]; then
+        log_error "No se pudieron reinstalar los snaps: ${failed[*]}"
+        return 1
+    fi
+    rm -f "$REMOVED_SNAPS"
+}
+
 do_snap_removal() {
     echo -e "${RED}☢️ Iniciando eliminación nuclear de Snap...${NC}\n"
 
@@ -2215,6 +2383,7 @@ do_snap_removal() {
 
     # Los snaps se eliminan mientras snapd sigue activo: sin el demonio 'snap remove' no funciona
     echo -e "${RED}[1/11] Eliminando paquetes snap de aplicaciones...${NC}"
+    record_removed_snaps
     local snap_name
     for snap_name in $(snap list 2>/dev/null | awk 'NR>1 && $NF !~ /base|core|snapd/ {print $1}'); do
         run "No se pudo eliminar el snap $snap_name" sudo snap remove --purge "$snap_name"
@@ -2378,6 +2547,9 @@ reinstall_snap() {
 
     echo -e "${GREEN}[5/5] Iniciando servicios...${NC}"
     run "No se pudo iniciar snapd" sudo systemctl enable --now snapd.socket snapd.service
+    if [ -s "$REMOVED_SNAPS" ] && confirm "${GREEN}¿Reinstalar también las apps snap que se quitaron ($(wc -l < "$REMOVED_SNAPS"))?${NC}"; then
+        restore_removed_snaps
+    fi
 
     echo ""
     echo -e "${GREEN}✓ Snap reinstalado correctamente${NC}"
@@ -4503,6 +4675,236 @@ EOF
     log_info "Shift derecho + F12 oculta el panel en el juego · Shift izquierdo + F2 pausa/reanuda la grabación"
 }
 
+# ------------------------------------------------------------
+# Steam y Proton
+# ------------------------------------------------------------
+
+# Instalador oficial de Valve (si no se descarga, se usa el de Ubuntu)
+STEAM_DEB_URLS=(
+    "https://cdn.fastly.steamstatic.com/client/installer/steam.deb"
+    "https://repo.steampowered.com/steam/archive/stable/steam_latest.deb"
+)
+PROTON_GE_LIST="$STATE_DIR/proton-ge.txt"
+
+steam_installed() {
+    [ -n "$(installed_pkgs steam-launcher steam-installer steam)" ] \
+        || flatpak info com.valvesoftware.Steam &> /dev/null
+}
+
+# Carpeta de datos de Steam (existe aunque todavía no se haya abierto)
+steam_dir() {
+    if [ -z "$(installed_pkgs steam-launcher steam-installer steam)" ] \
+        && [ -d "$HOME/.var/app/com.valvesoftware.Steam/data/Steam" ]; then
+        echo "$HOME/.var/app/com.valvesoftware.Steam/data/Steam"
+    elif [ -d "$HOME/.steam/root" ]; then
+        readlink -f "$HOME/.steam/root"
+    else
+        echo "$HOME/.local/share/Steam"
+    fi
+}
+
+steam_supported() {
+    if ! has_desktop; then
+        log_warning "Steam necesita un escritorio (este sistema no tiene)"
+        return 1
+    fi
+    if [ "$(dpkg --print-architecture)" != amd64 ]; then
+        log_warning "Steam solo existe para PC de 64 bits (amd64)"
+        return 1
+    fi
+}
+
+# Librerías gráficas de 32 bits: la mayoría de los juegos de Windows (Proton) las necesitan
+steam_i386_libs() {
+    local libs=() nv
+    if [ -n "$(available_pkgs steam-libs-amd64)" ]; then
+        libs+=(steam-libs-amd64:amd64 steam-libs-i386:i386)
+    else
+        libs+=(libgl1:i386 libgl1-mesa-dri:i386 mesa-vulkan-drivers:i386)
+    fi
+    # Con el driver de NVIDIA hace falta también su parte de 32 bits
+    nv=$(dpkg-query -W -f='${db:Status-Abbrev} ${Package}\n' 'libnvidia-gl-*' 2>/dev/null \
+        | awk '$1 ~ /^.i/ && $2 ~ /^libnvidia-gl-[0-9]+(-server)?$/ {print $2; exit}')
+    [ -n "$nv" ] && libs+=("$nv:i386")
+    apt_install_recorded "${libs[@]}"
+}
+
+install_steam() {
+    steam_supported || return 1
+    if steam_installed; then
+        echo -e "  ${GREEN}✓ Steam ya está instalado${NC}"
+        enable_steam_play
+        return 0
+    fi
+
+    echo -e "${BLUE}🎮 Instalando Steam...${NC}"
+    # Steam y los juegos de Windows usan librerías de 32 bits
+    if ! dpkg --print-foreign-architectures | grep -qx i386; then
+        run "No se pudo activar la arquitectura de 32 bits" sudo dpkg --add-architecture i386 || return 1
+        log_success "Arquitectura de 32 bits (i386) activada"
+    fi
+    command -v wget &> /dev/null || { apt_update; apt_install wget; }
+
+    local tmp url deb=""
+    tmp=$(mktemp -d)
+    chmod 755 "$tmp"
+    for url in "${STEAM_DEB_URLS[@]}"; do
+        if wget -qO "$tmp/steam.deb" "$url" >> "$LOG_FILE" 2>&1 \
+            && [ "$(dpkg-deb -f "$tmp/steam.deb" Package 2>/dev/null)" = steam-launcher ]; then
+            chmod 644 "$tmp/steam.deb"
+            deb="$tmp/steam.deb"
+            break
+        fi
+    done
+
+    apt_update force
+    if [ -n "$deb" ]; then
+        apt_install_recorded "$deb" || { rm -rf "$tmp"; return 1; }
+        # El instalador agrega el repositorio de Valve: de ahí salen sus librerías
+        apt_update force
+    elif [ -n "$(available_pkgs steam-installer)" ]; then
+        log_warning "No se pudo descargar el instalador de Valve: se usa el paquete de Ubuntu"
+        apt_install_recorded steam-installer || { rm -rf "$tmp"; return 1; }
+    else
+        log_error "No se pudo descargar Steam y tu Ubuntu no tiene el paquete (activa el repositorio multiverse)"
+        rm -rf "$tmp"
+        return 1
+    fi
+    rm -rf "$tmp"
+    steam_i386_libs || log_warning "Faltan librerías de 32 bits: Steam las pedirá al abrirlo"
+    log_success "Steam instalado (Proton viene incluido)"
+    enable_steam_play
+}
+
+# Activa Proton para todos los juegos (Steam → Configuración → Compatibilidad).
+# El ajuste vive en config.vdf, que Steam crea la primera vez que se abre.
+enable_steam_play() {
+    local cfg tmp
+    cfg="$(steam_dir)/config/config.vdf"
+    if [ ! -f "$cfg" ]; then
+        log_info "Abre Steam una vez e inicia sesión. Proton ya está activo para los juegos verificados;"
+        log_info "para todos: Steam → Configuración → Compatibilidad → 'Activar Steam Play para todos los demás títulos'"
+        log_info "(o, con Steam cerrado, usa la opción 16 → 6 y se activa solo)"
+        return 0
+    fi
+    if pgrep -x steam &> /dev/null; then
+        log_warning "Steam está abierto: ciérralo y usa la opción 16 → 6 para activar Proton en todos los juegos"
+        return 0
+    fi
+    tmp=$(mktemp)
+    if steam_play_vdf < "$cfg" > "$tmp"; then
+        cp "$cfg" "$cfg.bak"
+        mv "$tmp" "$cfg"
+        log_success "Proton activado para todos los juegos (Proton Experimental; copia en config.vdf.bak)"
+    else
+        rm -f "$tmp"
+        log_info "Steam ya tiene elegida una versión de Proton para todos los juegos: no se cambia"
+    fi
+}
+
+# Agrega a config.vdf la versión de Proton para "todos los demás títulos" (la entrada "0").
+# Falla (sin salida útil) si ya hay una elegida o si el archivo no tiene la forma esperada.
+steam_play_vdf() {
+    awk '
+        function path(   s, i) { s = ""; for (i = 1; i <= d; i++) s = s "/" tolower(st[i]); return s }
+        function tabs(n,   s) { s = ""; while (n-- > 0) s = s "\t"; return s }
+        function entry(t) {
+            print t "\"0\""; print t "{"
+            print t "\t\"name\"\t\t\"proton_experimental\""
+            print t "\t\"config\"\t\t\"\""
+            print t "\t\"priority\"\t\t\"75\""
+            print t "}"
+        }
+        { lines[NR] = $0 }
+        END {
+            base = "/installconfigstore/software/valve/steam"
+            # Primera pasada: ¿ya existe la entrada "0"? ¿existe CompatToolMapping?
+            d = 0
+            for (n = 1; n <= NR; n++) {
+                l = lines[n]
+                if (l ~ /^[ \t]*"[^"]*"[ \t]*$/) { k = l; gsub(/^[ \t]*"|"[ \t]*$/, "", k); pend = k }
+                else if (l ~ /^[ \t]*\{[ \t]*$/) { st[++d] = pend; p = path()
+                    if (p == base "/compattoolmapping") mapping = 1
+                    if (p == base "/compattoolmapping/0") exit 1 }
+                else if (l ~ /^[ \t]*\}[ \t]*$/) d--
+            }
+            if (d != 0) exit 1
+            # Segunda pasada: copia el archivo e inserta lo que falta
+            for (n = 1; n <= NR; n++) {
+                l = lines[n]; print l
+                if (l ~ /^[ \t]*"[^"]*"[ \t]*$/) { k = l; gsub(/^[ \t]*"|"[ \t]*$/, "", k); pend = k }
+                else if (l ~ /^[ \t]*\{[ \t]*$/) { st[++d] = pend; p = path(); t = tabs(d)
+                    if (!done && mapping && p == base "/compattoolmapping") { entry(t); done = 1 }
+                    if (!done && !mapping && p == base) {
+                        print t "\"CompatToolMapping\""; print t "{"; entry(t "\t"); print t "}"; done = 1 } }
+                else if (l ~ /^[ \t]*\}[ \t]*$/) d--
+            }
+            exit !done
+        }'
+}
+
+# Proton-GE: versión de la comunidad con arreglos para juegos y vídeos que el oficial aún no tiene
+install_proton_ge() {
+    steam_supported || return 1
+    command -v wget &> /dev/null || { apt_update; apt_install wget; }
+    local tag dir tmp
+    tag=$(wget -qO- https://api.github.com/repos/GloriousEggroll/proton-ge-custom/releases/latest 2>> "$LOG_FILE" \
+        | grep -m1 '"tag_name"' | cut -d'"' -f4)
+    if [[ ! "$tag" =~ ^GE-Proton[0-9A-Za-z.-]+$ ]]; then
+        log_error "No se pudo consultar la última versión de Proton-GE (¿sin internet?)"
+        return 1
+    fi
+    dir="$(steam_dir)/compatibilitytools.d"
+    if [ -d "$dir/$tag" ]; then
+        echo -e "  ${GREEN}✓ $tag ya está instalado (es la última versión)${NC}"
+        return 0
+    fi
+
+    echo -e "${BLUE}⬇ Descargando $tag (unos 500 MB)...${NC}"
+    mkdir -p "$dir" "${XDG_CACHE_HOME:-$HOME/.cache}"
+    tmp=$(mktemp -d -p "${XDG_CACHE_HOME:-$HOME/.cache}")
+    local base="https://github.com/GloriousEggroll/proton-ge-custom/releases/download/$tag/$tag"
+    if ! wget -q --show-progress -O "$tmp/$tag.tar.gz" "$base.tar.gz" \
+        || ! wget -qO "$tmp/$tag.sha512sum" "$base.sha512sum"; then
+        log_error "No se pudo descargar $tag"
+        rm -rf "$tmp"
+        return 1
+    fi
+    # Se comprueba que el archivo llegó entero y es el publicado
+    if ! (cd "$tmp" && sha512sum -c --status "$tag.sha512sum"); then
+        log_error "La descarga de $tag está dañada (la suma de comprobación no coincide)"
+        rm -rf "$tmp"
+        return 1
+    fi
+    if ! tar -xzf "$tmp/$tag.tar.gz" -C "$dir" >> "$LOG_FILE" 2>&1 || [ ! -d "$dir/$tag" ]; then
+        log_error "No se pudo descomprimir $tag"
+        rm -rf "$tmp" "${dir:?}/$tag"
+        return 1
+    fi
+    rm -rf "$tmp"
+    mkdir -p "$STATE_DIR"
+    echo "$dir/$tag" >> "$PROTON_GE_LIST"
+    log_success "$tag instalado"
+    log_info "Para usarlo en un juego: Propiedades → Compatibilidad → $tag (reinicia Steam si estaba abierto)"
+}
+
+# Quita las versiones de Proton-GE que instaló el script
+remove_proton_ge() {
+    local dirs=() d
+    [ -f "$PROTON_GE_LIST" ] && mapfile -t dirs < <(sort -u "$PROTON_GE_LIST")
+    mapfile -t dirs < <(for d in "${dirs[@]}"; do [ -d "$d" ] && [[ "$(basename "$d")" == GE-Proton* ]] && echo "$d"; done)
+    if [ ${#dirs[@]} -eq 0 ]; then
+        echo -e "${YELLOW}ℹ No hay versiones de Proton-GE instaladas por el script${NC}"
+        rm -f "$PROTON_GE_LIST"
+        return 0
+    fi
+    printf "  ${RED}•${NC} %s\n" "${dirs[@]##*/}"
+    confirm "${RED}¿Quitar estas versiones de Proton-GE? Los juegos que las usen vuelven al Proton oficial${NC}" || return 0
+    rm -rf "${dirs[@]}"
+    rm -f "$PROTON_GE_LIST"
+    log_success "Proton-GE quitado"
+}
+
 power_menu() {
     while true; do
         clear
@@ -4520,7 +4922,7 @@ power_menu() {
         echo -e "  ${YELLOW}3)${NC} Ahorro de energía"
         echo -e "  ${YELLOW}4)${NC} TLP: ahorro avanzado de batería para portátiles"
         echo -e "  ${YELLOW}5)${NC} Activar/desactivar el indexador de archivos (Baloo / Tracker)"
-        echo -e "  ${YELLOW}6)${NC} Herramientas de juego (GameMode y MangoHud)"
+        echo -e "  ${YELLOW}6)${NC} Herramientas de juego (GameMode, MangoHud, Steam y Proton)"
         echo -e "\n  ${YELLOW}0)${NC} 🔙 Volver"
         echo ""
         read -r -p "📌 Opción (0-6): " power_option
@@ -4538,7 +4940,17 @@ power_menu() {
                     disable_indexer
                 fi
                 ;;
-            6) install_gaming_tools ;;
+            6)
+                install_gaming_tools
+                if steam_installed; then
+                    enable_steam_play
+                elif has_desktop && confirm "${YELLOW}¿Instalar Steam (incluye Proton para juegos de Windows)?${NC}"; then
+                    install_steam
+                fi
+                if has_desktop && confirm "${YELLOW}¿Instalar Proton-GE (versión de la comunidad, más compatible)?${NC}"; then
+                    install_proton_ge
+                fi
+                ;;
             0) return 0 ;;
             *) echo -e "${RED}❌ Opción inválida${NC}"; sleep 1; continue ;;
         esac
@@ -4552,7 +4964,7 @@ power_menu() {
 
 PROFILES=(
     "productividad|Oficina y uso diario: herramientas, RAM, DNS rápido, sin juegos"
-    "gaming|Juegos: drivers, kernel Liquorix, GameMode, máximo rendimiento, red de baja latencia"
+    "gaming|Juegos: Steam + Proton, drivers, kernel Liquorix, GameMode, red de baja latencia"
     "ahorro|Ahorro de energía: TLP en portátiles, sin indexador, ZRAM"
     "desarrollo|Programación: git, compiladores, Python, VSCode, ajustes para IDEs"
     "minimalista|Mínimo: sin meta-paquete ni apps extra, sin Snap, Firefox .deb (y Plasma más nuevo en Kubuntu)"
@@ -4579,6 +4991,8 @@ Actualizar el sistema|do_system_update
 Instalar drivers recomendados (GPU, Wi-Fi...)|install_recommended_drivers
 Kernel Liquorix (se omite si Secure Boot está activo)|install_liquorix_kernel
 Instalar GameMode y MangoHud|install_gaming_tools
+Instalar Steam y activar Proton para todos los juegos|install_steam
+Instalar Proton-GE (más compatible con algunos juegos)|install_proton_ge
 Optimizar RAM (swappiness y caché)|apply_ram_tweaks
 Activar ZRAM|enable_zram
 Perfil de energía: rendimiento máximo (o GameMode al jugar)|set_gaming_power
@@ -4642,7 +5056,6 @@ run_profile() {
         list_profiles
         return 1
     fi
-    ACTIVE_PROFILE="$name"
 
     clear
     echo -e "${PURPLE}${BOLD}"
@@ -4667,6 +5080,7 @@ run_profile() {
     # Durante el perfil no hay preguntas: las confirmaciones internas responden "no"
     local was_auto=$AUTO_MODE
     AUTO_MODE=true
+    ACTIVE_PROFILE="$name"
     start=$(date +%s)
     i=0
     for line in "${steps[@]}"; do
@@ -4682,6 +5096,7 @@ run_profile() {
         fi
     done
     AUTO_MODE=$was_auto
+    ACTIVE_PROFILE=""
 
     echo ""
     echo -e "${PURPLE}${BOLD}📊 Resumen del perfil $name ($(( ($(date +%s) - start) / 60 )) min):${NC}\n"
@@ -4729,7 +5144,7 @@ profiles_menu() {
 # que Ubuntu ya trae (python3, curl, wget): quitarlos podría romper otras cosas.
 SCRIPT_PROGRAMS=(filezilla code virtualbox google-chrome-stable telegram-desktop python3-pip
     python3-venv git htop fastfetch timeshift gparted vim discord spotify-client obs-studio
-    qrca build-essential alacritty gamemode mangohud tlp tlp-rdw zram-tools corectrl
+    qrca build-essential alacritty gamemode mangohud steam-launcher steam-installer tlp tlp-rdw zram-tools corectrl
     nvidia-cuda-toolkit grub-customizer boot-repair refind)
 
 remove_installed_programs() {
@@ -4925,16 +5340,18 @@ undo_menu() {
         echo -e "  ${RED}3)${NC} 💾 Desactivar ZRAM"
         echo -e "  ${RED}4)${NC} 🔋 Quitar TLP y volver al selector de energía del escritorio"
         echo -e "  ${RED}5)${NC} 📋 Ver qué AJUSTES están cambiados y restaurarlos todos (no toca programas)"
+        echo -e "  ${RED}6)${NC} 🍷 Quitar Proton-GE"
         echo -e "\n  ${RED}0)${NC} 🔙 Volver"
-        echo -e "\n${YELLOW}ℹ Otros cambios se deshacen en su menú: kernel (4), ${FLAVOR_NAME} original (9),${NC}"
+        echo -e "\n${YELLOW}ℹ Otros cambios se deshacen en su menú: kernel (4), distribución original (9),${NC}"
         echo -e "${YELLOW}  Snap (11), accesos directos (14), DNS/BBR/Wi-Fi (15), energía e indexador (16)${NC}\n"
-        read -r -p "📌 Opción (0-5): " undo_option
+        read -r -p "📌 Opción (0-6): " undo_option
 
         case $undo_option in
             1) remove_installed_programs ;;
             2) restore_sysctl_defaults ;;
             3) disable_zram ;;
             4) remove_tlp ;;
+            6) remove_proton_ge ;;
             5)
                 if ! show_tweaks_status; then
                     echo -e "${GREEN}✓ No hay ajustes cambiados: todo está como de fábrica${NC}"
@@ -5456,7 +5873,7 @@ main_menu() {
         echo -e "  ${CYAN} 6)${NC} 🔄 ACTUALIZAR SISTEMA (update/upgrade/clean)"
         echo -e "  ${CYAN} 7)${NC} 🖥️  Instalar Alacritty (terminal GPU) y temas"
         echo -e "  ${CYAN} 8)${NC} 📦 Instalar software opcional"
-        echo -e "  ${CYAN} 9)${NC} ↩️  Revertir a ${FLAVOR_NAME} original"
+        echo -e "  ${CYAN} 9)${NC} ↩️  Revertir a distribución original"
         echo -e "  ${CYAN}10)${NC} ☢️  ELIMINACION NUCLEAR DE SNAP"
         echo -e "  ${CYAN}11)${NC} 🔄 REINSTALAR SNAP"
         echo -e "  ${CYAN}12)${NC} 🔧 ARRANQUE: reparar y personalizar GRUB/EFI"
