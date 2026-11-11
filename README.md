@@ -179,7 +179,9 @@ Todo lo hace el propio script, sin instalar programas externos.
 | | **8** Orden de arranque UEFI | Poner una entrada primera, o arrancarla solo la próxima vez |
 | | **9** Personalizar menú | **Ocultar cualquier entrada** marcándola con la barra espaciadora (cada kernel, Windows, cada memtest, UEFI...), mostrar otros sistemas antes que Kubuntu, recordar el último elegido, colores, imagen de fondo, resolución, parámetros del kernel, **restaurar el menú original** y **deshacer los cambios de Grub Customizer** |
 | 🚑 | **10** Reparar desde Live USB | Reparación automática con chroot cuando el sistema no arranca |
-| | **11–13** Guías | Prompt `grub>`, `grub rescue>` y reparación manual desde Live USB |
+| | **11–13** Guías | Prompt `grub>`, `grub rescue>` y reparación manual desde Live USB. Las de `grub>` y `grub rescue>` muestran primero **los comandos exactos de tu PC** y luego cómo hacer que GRUB busque solo dónde está Ubuntu |
+| 🛟 | **14** Tarjeta de rescate | Los comandos exactos de **tu** PC para `grub>` y `grub rescue>`, para fotografiar y copiar al pendrive junto con el script |
+| | **15** Arranque de respaldo UEFI | Que la PC arranque aunque la BIOS pierda la entrada de Ubuntu |
 
 Antes del primer cambio, el script guarda una copia de `/etc/default/grub`
 (`/etc/default/grub.ubuntu-ultimate-tools.orig`) para poder volver al menú original.
@@ -204,12 +206,29 @@ La reparación automática desde Live USB:
 
 #### Prepárate antes de necesitarlo
 
-Como el repositorio es privado, desde el Live USB no se puede descargar el script sin iniciar
-sesión. Lo más práctico es **guardarlo ahora en un pendrive**, mientras el sistema funciona:
+Con el sistema funcionando, usa la opción 12 → 14 y la 12 → 15. Son tres pasos:
 
-1. Copia `ubuntu-ultimate-tools.sh` a un pendrive (puede ser el mismo del Live USB si tiene una
-   partición de datos, o uno aparte).
-2. Ten a mano también un **USB de instalación de tu sabor de Ubuntu** (el Live USB).
+1. **Tarjeta de rescate (12 → 14).** Calcula los comandos exactos para tu PC: el nombre que GRUB le da a
+   tu partición (por ejemplo `(hd0,gpt2)`), su UUID y las rutas del kernel. Funciona con ext4, btrfs y
+   `/boot` en partición aparte.
+   - **Sácale una foto con el celular**: cuando aparece `grub>` no puedes abrir archivos de tu disco.
+   - Se guarda en `~/tarjeta-rescate-arranque.txt` y en la partición EFI, que se puede leer desde un
+     Live USB o desde Windows.
+   - Se actualiza sola cada vez que el script cambia GRUB.
+2. **Pendrive.** En esa misma opción, el script copia **la tarjeta y el propio script** al pendrive que
+   elijas. Como el repositorio es privado, desde un Live USB no se podría descargar sin iniciar sesión.
+3. **Arranque de respaldo UEFI (12 → 15).** El firmware guarda una lista de sistemas para arrancar, y
+   a veces la pierde: al actualizar la BIOS, por un reseteo o al cambiar el disco de PC. Entonces la PC
+   no arranca o va directo a Windows, aunque Ubuntu esté bien.
+   - El script copia el arranque de Ubuntu a la ruta de emergencia `EFI/BOOT/BOOTX64.EFI`, la que el
+     firmware prueba cuando no encuentra nada.
+   - Ubuntu arranca igual por esa ruta y **vuelve a crear su entrada solo**.
+   - Funciona con Secure Boot y se mantiene al día con cada actualización (un hook de apt).
+   - Si esa ruta la usa Windows, no se toca. Si la usaba otro sistema, se guarda una copia y al
+     quitarlo vuelve como estaba.
+   - La reparación completa (12 → 3) también lo ofrece.
+
+Ten a mano también un **USB de instalación de tu sabor de Ubuntu** (el Live USB).
 
 #### Cuando el sistema no arranca
 
