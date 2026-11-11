@@ -1871,6 +1871,8 @@ select_optional_software() {
         "gparted|💾 GParted"
         "vim|⌨️ Vim"
         "discord|🎮 Discord"
+        "steam|🎮 Steam (con Proton para juegos de Windows)"
+        "proton-ge|🍷 Proton-GE (Proton de la comunidad, más compatible)"
         "spotify|🎵 Spotify"
         "obs-studio|🎥 OBS Studio"
         "emojier|😊 Selector de emojis"
@@ -1880,6 +1882,8 @@ select_optional_software() {
     # Se marca lo que ya está instalado para no reinstalarlo por error
     local installed=() entries=() app pkg
     mapfile -t installed < <(installed_pkgs "${software[@]%%|*}" spotify-client kdeplasma-addons)
+    steam_installed && installed+=(steam)
+    [ -n "$(ls -d "$(steam_dir)"/compatibilitytools.d/GE-Proton* 2>/dev/null)" ] && installed+=(proton-ge)
     for app in "${software[@]}"; do
         pkg=${app%%|*}
         case $pkg in
@@ -2001,7 +2005,7 @@ setup_spotify_repo() {
 # Discord) se descargan en paralelo mientras se actualiza la lista de paquetes.
 install_optional_with_progress() {
     local repo=() deb_names=() deb_urls=() pids=() debs=() failed=() app i
-    local repo_changed=false tmp
+    local repo_changed=false tmp want_steam=false want_ge=false
     tmp=$(mktemp -d)
     chmod 755 "$tmp"
 
@@ -2032,6 +2036,9 @@ install_optional_with_progress() {
                     failed+=(spotify)
                 fi ;;
             "emojier") repo+=(kdeplasma-addons) ;;
+            # Necesitan pasos propios (32 bits, verificación): se instalan al final
+            "steam") want_steam=true ;;
+            "proton-ge") want_ge=true ;;
             *) repo+=("$app") ;;
         esac
     done
@@ -2090,6 +2097,9 @@ install_optional_with_progress() {
         fi
     fi
     rm -rf "$tmp"
+
+    if $want_steam; then install_steam || failed+=(steam); fi
+    if $want_ge; then install_proton_ge || failed+=(proton-ge); fi
 
     if [ ${#failed[@]} -gt 0 ]; then
         log_error "No se pudieron instalar: ${failed[*]}"
@@ -4665,6 +4675,236 @@ EOF
     log_info "Shift derecho + F12 oculta el panel en el juego · Shift izquierdo + F2 pausa/reanuda la grabación"
 }
 
+# ------------------------------------------------------------
+# Steam y Proton
+# ------------------------------------------------------------
+
+# Instalador oficial de Valve (si no se descarga, se usa el de Ubuntu)
+STEAM_DEB_URLS=(
+    "https://cdn.fastly.steamstatic.com/client/installer/steam.deb"
+    "https://repo.steampowered.com/steam/archive/stable/steam_latest.deb"
+)
+PROTON_GE_LIST="$STATE_DIR/proton-ge.txt"
+
+steam_installed() {
+    [ -n "$(installed_pkgs steam-launcher steam-installer steam)" ] \
+        || flatpak info com.valvesoftware.Steam &> /dev/null
+}
+
+# Carpeta de datos de Steam (existe aunque todavía no se haya abierto)
+steam_dir() {
+    if [ -z "$(installed_pkgs steam-launcher steam-installer steam)" ] \
+        && [ -d "$HOME/.var/app/com.valvesoftware.Steam/data/Steam" ]; then
+        echo "$HOME/.var/app/com.valvesoftware.Steam/data/Steam"
+    elif [ -d "$HOME/.steam/root" ]; then
+        readlink -f "$HOME/.steam/root"
+    else
+        echo "$HOME/.local/share/Steam"
+    fi
+}
+
+steam_supported() {
+    if ! has_desktop; then
+        log_warning "Steam necesita un escritorio (este sistema no tiene)"
+        return 1
+    fi
+    if [ "$(dpkg --print-architecture)" != amd64 ]; then
+        log_warning "Steam solo existe para PC de 64 bits (amd64)"
+        return 1
+    fi
+}
+
+# Librerías gráficas de 32 bits: la mayoría de los juegos de Windows (Proton) las necesitan
+steam_i386_libs() {
+    local libs=() nv
+    if [ -n "$(available_pkgs steam-libs-amd64)" ]; then
+        libs+=(steam-libs-amd64:amd64 steam-libs-i386:i386)
+    else
+        libs+=(libgl1:i386 libgl1-mesa-dri:i386 mesa-vulkan-drivers:i386)
+    fi
+    # Con el driver de NVIDIA hace falta también su parte de 32 bits
+    nv=$(dpkg-query -W -f='${db:Status-Abbrev} ${Package}\n' 'libnvidia-gl-*' 2>/dev/null \
+        | awk '$1 ~ /^.i/ && $2 ~ /^libnvidia-gl-[0-9]+(-server)?$/ {print $2; exit}')
+    [ -n "$nv" ] && libs+=("$nv:i386")
+    apt_install_recorded "${libs[@]}"
+}
+
+install_steam() {
+    steam_supported || return 1
+    if steam_installed; then
+        echo -e "  ${GREEN}✓ Steam ya está instalado${NC}"
+        enable_steam_play
+        return 0
+    fi
+
+    echo -e "${BLUE}🎮 Instalando Steam...${NC}"
+    # Steam y los juegos de Windows usan librerías de 32 bits
+    if ! dpkg --print-foreign-architectures | grep -qx i386; then
+        run "No se pudo activar la arquitectura de 32 bits" sudo dpkg --add-architecture i386 || return 1
+        log_success "Arquitectura de 32 bits (i386) activada"
+    fi
+    command -v wget &> /dev/null || { apt_update; apt_install wget; }
+
+    local tmp url deb=""
+    tmp=$(mktemp -d)
+    chmod 755 "$tmp"
+    for url in "${STEAM_DEB_URLS[@]}"; do
+        if wget -qO "$tmp/steam.deb" "$url" >> "$LOG_FILE" 2>&1 \
+            && [ "$(dpkg-deb -f "$tmp/steam.deb" Package 2>/dev/null)" = steam-launcher ]; then
+            chmod 644 "$tmp/steam.deb"
+            deb="$tmp/steam.deb"
+            break
+        fi
+    done
+
+    apt_update force
+    if [ -n "$deb" ]; then
+        apt_install_recorded "$deb" || { rm -rf "$tmp"; return 1; }
+        # El instalador agrega el repositorio de Valve: de ahí salen sus librerías
+        apt_update force
+    elif [ -n "$(available_pkgs steam-installer)" ]; then
+        log_warning "No se pudo descargar el instalador de Valve: se usa el paquete de Ubuntu"
+        apt_install_recorded steam-installer || { rm -rf "$tmp"; return 1; }
+    else
+        log_error "No se pudo descargar Steam y tu Ubuntu no tiene el paquete (activa el repositorio multiverse)"
+        rm -rf "$tmp"
+        return 1
+    fi
+    rm -rf "$tmp"
+    steam_i386_libs || log_warning "Faltan librerías de 32 bits: Steam las pedirá al abrirlo"
+    log_success "Steam instalado (Proton viene incluido)"
+    enable_steam_play
+}
+
+# Activa Proton para todos los juegos (Steam → Configuración → Compatibilidad).
+# El ajuste vive en config.vdf, que Steam crea la primera vez que se abre.
+enable_steam_play() {
+    local cfg tmp
+    cfg="$(steam_dir)/config/config.vdf"
+    if [ ! -f "$cfg" ]; then
+        log_info "Abre Steam una vez e inicia sesión. Proton ya está activo para los juegos verificados;"
+        log_info "para todos: Steam → Configuración → Compatibilidad → 'Activar Steam Play para todos los demás títulos'"
+        log_info "(o, con Steam cerrado, usa la opción 16 → 6 y se activa solo)"
+        return 0
+    fi
+    if pgrep -x steam &> /dev/null; then
+        log_warning "Steam está abierto: ciérralo y usa la opción 16 → 6 para activar Proton en todos los juegos"
+        return 0
+    fi
+    tmp=$(mktemp)
+    if steam_play_vdf < "$cfg" > "$tmp"; then
+        cp "$cfg" "$cfg.bak"
+        mv "$tmp" "$cfg"
+        log_success "Proton activado para todos los juegos (Proton Experimental; copia en config.vdf.bak)"
+    else
+        rm -f "$tmp"
+        log_info "Steam ya tiene elegida una versión de Proton para todos los juegos: no se cambia"
+    fi
+}
+
+# Agrega a config.vdf la versión de Proton para "todos los demás títulos" (la entrada "0").
+# Falla (sin salida útil) si ya hay una elegida o si el archivo no tiene la forma esperada.
+steam_play_vdf() {
+    awk '
+        function path(   s, i) { s = ""; for (i = 1; i <= d; i++) s = s "/" tolower(st[i]); return s }
+        function tabs(n,   s) { s = ""; while (n-- > 0) s = s "\t"; return s }
+        function entry(t) {
+            print t "\"0\""; print t "{"
+            print t "\t\"name\"\t\t\"proton_experimental\""
+            print t "\t\"config\"\t\t\"\""
+            print t "\t\"priority\"\t\t\"75\""
+            print t "}"
+        }
+        { lines[NR] = $0 }
+        END {
+            base = "/installconfigstore/software/valve/steam"
+            # Primera pasada: ¿ya existe la entrada "0"? ¿existe CompatToolMapping?
+            d = 0
+            for (n = 1; n <= NR; n++) {
+                l = lines[n]
+                if (l ~ /^[ \t]*"[^"]*"[ \t]*$/) { k = l; gsub(/^[ \t]*"|"[ \t]*$/, "", k); pend = k }
+                else if (l ~ /^[ \t]*\{[ \t]*$/) { st[++d] = pend; p = path()
+                    if (p == base "/compattoolmapping") mapping = 1
+                    if (p == base "/compattoolmapping/0") exit 1 }
+                else if (l ~ /^[ \t]*\}[ \t]*$/) d--
+            }
+            if (d != 0) exit 1
+            # Segunda pasada: copia el archivo e inserta lo que falta
+            for (n = 1; n <= NR; n++) {
+                l = lines[n]; print l
+                if (l ~ /^[ \t]*"[^"]*"[ \t]*$/) { k = l; gsub(/^[ \t]*"|"[ \t]*$/, "", k); pend = k }
+                else if (l ~ /^[ \t]*\{[ \t]*$/) { st[++d] = pend; p = path(); t = tabs(d)
+                    if (!done && mapping && p == base "/compattoolmapping") { entry(t); done = 1 }
+                    if (!done && !mapping && p == base) {
+                        print t "\"CompatToolMapping\""; print t "{"; entry(t "\t"); print t "}"; done = 1 } }
+                else if (l ~ /^[ \t]*\}[ \t]*$/) d--
+            }
+            exit !done
+        }'
+}
+
+# Proton-GE: versión de la comunidad con arreglos para juegos y vídeos que el oficial aún no tiene
+install_proton_ge() {
+    steam_supported || return 1
+    command -v wget &> /dev/null || { apt_update; apt_install wget; }
+    local tag dir tmp
+    tag=$(wget -qO- https://api.github.com/repos/GloriousEggroll/proton-ge-custom/releases/latest 2>> "$LOG_FILE" \
+        | grep -m1 '"tag_name"' | cut -d'"' -f4)
+    if [[ ! "$tag" =~ ^GE-Proton[0-9A-Za-z.-]+$ ]]; then
+        log_error "No se pudo consultar la última versión de Proton-GE (¿sin internet?)"
+        return 1
+    fi
+    dir="$(steam_dir)/compatibilitytools.d"
+    if [ -d "$dir/$tag" ]; then
+        echo -e "  ${GREEN}✓ $tag ya está instalado (es la última versión)${NC}"
+        return 0
+    fi
+
+    echo -e "${BLUE}⬇ Descargando $tag (unos 500 MB)...${NC}"
+    mkdir -p "$dir" "${XDG_CACHE_HOME:-$HOME/.cache}"
+    tmp=$(mktemp -d -p "${XDG_CACHE_HOME:-$HOME/.cache}")
+    local base="https://github.com/GloriousEggroll/proton-ge-custom/releases/download/$tag/$tag"
+    if ! wget -q --show-progress -O "$tmp/$tag.tar.gz" "$base.tar.gz" \
+        || ! wget -qO "$tmp/$tag.sha512sum" "$base.sha512sum"; then
+        log_error "No se pudo descargar $tag"
+        rm -rf "$tmp"
+        return 1
+    fi
+    # Se comprueba que el archivo llegó entero y es el publicado
+    if ! (cd "$tmp" && sha512sum -c --status "$tag.sha512sum"); then
+        log_error "La descarga de $tag está dañada (la suma de comprobación no coincide)"
+        rm -rf "$tmp"
+        return 1
+    fi
+    if ! tar -xzf "$tmp/$tag.tar.gz" -C "$dir" >> "$LOG_FILE" 2>&1 || [ ! -d "$dir/$tag" ]; then
+        log_error "No se pudo descomprimir $tag"
+        rm -rf "$tmp" "${dir:?}/$tag"
+        return 1
+    fi
+    rm -rf "$tmp"
+    mkdir -p "$STATE_DIR"
+    echo "$dir/$tag" >> "$PROTON_GE_LIST"
+    log_success "$tag instalado"
+    log_info "Para usarlo en un juego: Propiedades → Compatibilidad → $tag (reinicia Steam si estaba abierto)"
+}
+
+# Quita las versiones de Proton-GE que instaló el script
+remove_proton_ge() {
+    local dirs=() d
+    [ -f "$PROTON_GE_LIST" ] && mapfile -t dirs < <(sort -u "$PROTON_GE_LIST")
+    mapfile -t dirs < <(for d in "${dirs[@]}"; do [ -d "$d" ] && [[ "$(basename "$d")" == GE-Proton* ]] && echo "$d"; done)
+    if [ ${#dirs[@]} -eq 0 ]; then
+        echo -e "${YELLOW}ℹ No hay versiones de Proton-GE instaladas por el script${NC}"
+        rm -f "$PROTON_GE_LIST"
+        return 0
+    fi
+    printf "  ${RED}•${NC} %s\n" "${dirs[@]##*/}"
+    confirm "${RED}¿Quitar estas versiones de Proton-GE? Los juegos que las usen vuelven al Proton oficial${NC}" || return 0
+    rm -rf "${dirs[@]}"
+    rm -f "$PROTON_GE_LIST"
+    log_success "Proton-GE quitado"
+}
+
 power_menu() {
     while true; do
         clear
@@ -4682,7 +4922,7 @@ power_menu() {
         echo -e "  ${YELLOW}3)${NC} Ahorro de energía"
         echo -e "  ${YELLOW}4)${NC} TLP: ahorro avanzado de batería para portátiles"
         echo -e "  ${YELLOW}5)${NC} Activar/desactivar el indexador de archivos (Baloo / Tracker)"
-        echo -e "  ${YELLOW}6)${NC} Herramientas de juego (GameMode y MangoHud)"
+        echo -e "  ${YELLOW}6)${NC} Herramientas de juego (GameMode, MangoHud, Steam y Proton)"
         echo -e "\n  ${YELLOW}0)${NC} 🔙 Volver"
         echo ""
         read -r -p "📌 Opción (0-6): " power_option
@@ -4700,7 +4940,17 @@ power_menu() {
                     disable_indexer
                 fi
                 ;;
-            6) install_gaming_tools ;;
+            6)
+                install_gaming_tools
+                if steam_installed; then
+                    enable_steam_play
+                elif has_desktop && confirm "${YELLOW}¿Instalar Steam (incluye Proton para juegos de Windows)?${NC}"; then
+                    install_steam
+                fi
+                if has_desktop && confirm "${YELLOW}¿Instalar Proton-GE (versión de la comunidad, más compatible)?${NC}"; then
+                    install_proton_ge
+                fi
+                ;;
             0) return 0 ;;
             *) echo -e "${RED}❌ Opción inválida${NC}"; sleep 1; continue ;;
         esac
@@ -4714,7 +4964,7 @@ power_menu() {
 
 PROFILES=(
     "productividad|Oficina y uso diario: herramientas, RAM, DNS rápido, sin juegos"
-    "gaming|Juegos: drivers, kernel Liquorix, GameMode, máximo rendimiento, red de baja latencia"
+    "gaming|Juegos: Steam + Proton, drivers, kernel Liquorix, GameMode, red de baja latencia"
     "ahorro|Ahorro de energía: TLP en portátiles, sin indexador, ZRAM"
     "desarrollo|Programación: git, compiladores, Python, VSCode, ajustes para IDEs"
     "minimalista|Mínimo: sin meta-paquete ni apps extra, sin Snap, Firefox .deb (y Plasma más nuevo en Kubuntu)"
@@ -4741,6 +4991,8 @@ Actualizar el sistema|do_system_update
 Instalar drivers recomendados (GPU, Wi-Fi...)|install_recommended_drivers
 Kernel Liquorix (se omite si Secure Boot está activo)|install_liquorix_kernel
 Instalar GameMode y MangoHud|install_gaming_tools
+Instalar Steam y activar Proton para todos los juegos|install_steam
+Instalar Proton-GE (más compatible con algunos juegos)|install_proton_ge
 Optimizar RAM (swappiness y caché)|apply_ram_tweaks
 Activar ZRAM|enable_zram
 Perfil de energía: rendimiento máximo (o GameMode al jugar)|set_gaming_power
@@ -4804,7 +5056,6 @@ run_profile() {
         list_profiles
         return 1
     fi
-    ACTIVE_PROFILE="$name"
 
     clear
     echo -e "${PURPLE}${BOLD}"
@@ -4829,6 +5080,7 @@ run_profile() {
     # Durante el perfil no hay preguntas: las confirmaciones internas responden "no"
     local was_auto=$AUTO_MODE
     AUTO_MODE=true
+    ACTIVE_PROFILE="$name"
     start=$(date +%s)
     i=0
     for line in "${steps[@]}"; do
@@ -4844,6 +5096,7 @@ run_profile() {
         fi
     done
     AUTO_MODE=$was_auto
+    ACTIVE_PROFILE=""
 
     echo ""
     echo -e "${PURPLE}${BOLD}📊 Resumen del perfil $name ($(( ($(date +%s) - start) / 60 )) min):${NC}\n"
@@ -4891,7 +5144,7 @@ profiles_menu() {
 # que Ubuntu ya trae (python3, curl, wget): quitarlos podría romper otras cosas.
 SCRIPT_PROGRAMS=(filezilla code virtualbox google-chrome-stable telegram-desktop python3-pip
     python3-venv git htop fastfetch timeshift gparted vim discord spotify-client obs-studio
-    qrca build-essential alacritty gamemode mangohud tlp tlp-rdw zram-tools corectrl
+    qrca build-essential alacritty gamemode mangohud steam-launcher steam-installer tlp tlp-rdw zram-tools corectrl
     nvidia-cuda-toolkit grub-customizer boot-repair refind)
 
 remove_installed_programs() {
@@ -5087,16 +5340,18 @@ undo_menu() {
         echo -e "  ${RED}3)${NC} 💾 Desactivar ZRAM"
         echo -e "  ${RED}4)${NC} 🔋 Quitar TLP y volver al selector de energía del escritorio"
         echo -e "  ${RED}5)${NC} 📋 Ver qué AJUSTES están cambiados y restaurarlos todos (no toca programas)"
+        echo -e "  ${RED}6)${NC} 🍷 Quitar Proton-GE"
         echo -e "\n  ${RED}0)${NC} 🔙 Volver"
         echo -e "\n${YELLOW}ℹ Otros cambios se deshacen en su menú: kernel (4), distribución original (9),${NC}"
         echo -e "${YELLOW}  Snap (11), accesos directos (14), DNS/BBR/Wi-Fi (15), energía e indexador (16)${NC}\n"
-        read -r -p "📌 Opción (0-5): " undo_option
+        read -r -p "📌 Opción (0-6): " undo_option
 
         case $undo_option in
             1) remove_installed_programs ;;
             2) restore_sysctl_defaults ;;
             3) disable_zram ;;
             4) remove_tlp ;;
+            6) remove_proton_ge ;;
             5)
                 if ! show_tweaks_status; then
                     echo -e "${GREEN}✓ No hay ajustes cambiados: todo está como de fábrica${NC}"

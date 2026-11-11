@@ -114,7 +114,7 @@ o desde la terminal:
 | Perfil | Qué hace |
 |--------|----------|
 | `productividad` | Actualiza, quita juegos, instala git/htop/timeshift..., RAM + ZRAM, TRIM, DNS más rápido, TCP BBR |
-| `gaming` | Drivers recomendados, kernel Liquorix, GameMode + MangoHud, energía al máximo, sin Baloo, Wi-Fi sin ahorro, BBR, DNS |
+| `gaming` | **Steam + Proton** (activado para todos los juegos) y Proton-GE, drivers recomendados, kernel Liquorix, GameMode + MangoHud, energía al máximo, sin Baloo, Wi-Fi sin ahorro, BBR, DNS |
 | `ahorro` | TLP en portátiles (perfil de ahorro en PC), sin Baloo, ZRAM, RAM, TRIM |
 | `desarrollo` | git, build-essential, Python, VSCode, más vigilancia de archivos para IDEs, RAM, ZRAM, BBR, DNS |
 | `minimalista` | Mínimo: sin el meta-paquete del sabor ni apps extra, sin Snap, Firefox .deb de Mozilla (en KDE, Plasma de backports) |
@@ -143,11 +143,23 @@ o desde la terminal:
 ## 🔋 Energía y rendimiento (opción 16)
 
 Perfiles rendimiento / equilibrado / ahorro, TLP para portátiles, activar o desactivar el indexador
-de archivos Baloo, y GameMode + MangoHud para juegos.
+de archivos Baloo, y herramientas de juego: GameMode, MangoHud, Steam y Proton-GE.
 
 MangoHud queda configurado: muestra los FPS en el juego y los graba en ~/mangohud-logs (SysMonitorPro los lee).
 Opcionalmente (y siempre en el perfil `gaming`) se activa en todos los juegos Vulkan/Proton sin tocar Steam.
 Shift derecho + F12 oculta el panel · Shift izquierdo + F2 pausa/reanuda la grabación.
+
+### 🎮 Steam y Proton
+
+- **Steam**: se instala el `.deb` oficial de Valve y se activan las librerías de 32 bits (`i386`) que necesitan
+  Steam y los juegos, incluida la parte de 32 bits del driver de NVIDIA si lo usas.
+- **Proton** viene dentro de Steam. El script lo activa para **todos los juegos** (Proton Experimental):
+  si Steam todavía no se abrió nunca, ábrelo una vez, inicia sesión, ciérralo y usa la opción 16 → 6;
+  o actívalo a mano en *Steam → Configuración → Compatibilidad*. Si ya elegiste una versión, no se cambia.
+- **Proton-GE**: la última versión se descarga de la página oficial del proyecto, se comprueba que llegó
+  entera (suma SHA-512) y se instala en `compatibilitytools.d`. Se elige por juego en
+  *Propiedades → Compatibilidad*. Funciona también con Steam de Flatpak.
+- Se quitan desde la opción 18: Steam en "Quitar programas" y Proton-GE en "Quitar Proton-GE".
 
 ---
 
@@ -238,6 +250,7 @@ disponible, se vuelve a la selección escribiendo números.
   Antes de desinstalar avisa si se quitará algo más por dependencias.
 - **Restaurar ajustes del sistema** (RAM, inotify, BBR...) a sus valores de fábrica.
 - **Desactivar ZRAM** y **quitar TLP** (vuelve el selector de energía del escritorio).
+- **Quitar Proton-GE** (las versiones que instaló el script).
 - **Restaurar todos los ajustes** de una vez, sin desinstalar programas. "Revertir a
   distribución original" (opción 9) también lo hace.
 
@@ -336,6 +349,8 @@ desde la opción 18.
 | Google Chrome | Navegador web | `.deb` oficial de Google |
 | Telegram | Mensajería | Ubuntu |
 | Discord | Chat de voz y texto | `.deb` oficial |
+| Steam | Juegos; incluye **Proton** para jugar juegos de Windows | `.deb` oficial de Valve (o el de Ubuntu) |
+| Proton-GE | Proton de la comunidad, con arreglos para más juegos | Página oficial del proyecto (descarga verificada) |
 | Spotify | Música | Repositorio de Spotify |
 | OBS Studio | Grabar pantalla y hacer streaming | Ubuntu |
 | Python 3, PIP y entornos virtuales | Programación | Ubuntu |
