@@ -15,6 +15,7 @@
 # ============================================================
 
 LOG_FILE="$HOME/ubuntu-ultimate-tools.log"
+SCRIPT_PATH=$(readlink -f "${BASH_SOURCE[0]}")
 
 # Estado guardado entre ejecuciones (lo usa "Revertir")
 STATE_DIR="$HOME/.local/share/ubuntu-ultimate-tools"
@@ -2589,9 +2590,14 @@ grub_repair_menu() {
         echo -e "  ${PURPLE}11)${NC} 📖 GUÍA 'grub>' - Arrancar a mano desde el prompt de GRUB"
         echo -e "  ${PURPLE}12)${NC} 📖 GUÍA 'grub rescue>' - Recuperar el menú de GRUB"
         echo -e "  ${PURPLE}13)${NC} 📖 GUÍA LIVE USB - Reparación manual con comandos"
+        echo -e "\n${PURPLE}🛟 Prepárate ANTES de que falle (con el sistema funcionando):${NC}"
+        echo -e "  ${PURPLE}14)${NC} 🪪 TARJETA DE RESCATE - Los comandos exactos de TU PC para 'grub>' y"
+        echo -e "        'grub rescue>', para fotografiar y copiar al pendrive junto con el script"
+        echo -e "  ${PURPLE}15)${NC} 🛟 ARRANQUE DE RESPALDO UEFI - Que la PC arranque aunque la BIOS"
+        echo -e "        pierda la entrada de Ubuntu (actualización de BIOS, reseteo...)"
         echo -e "\n  ${PURPLE} 0)${NC} 🔙 Volver al menú principal"
         echo ""
-        read -r -p "📌 Opción (0-13): " grub_option
+        read -r -p "📌 Opción (0-15): " grub_option
 
         case $grub_option in
             1) grub_diagnostic ;;
@@ -2607,6 +2613,8 @@ grub_repair_menu() {
             11) grub_prompt_guide ;;
             12) grub_rescue_guide ;;
             13) grub_live_guide ;;
+            14) rescue_card_menu ;;
+            15) uefi_fallback_menu ;;
             0) return 0 ;;
             *) echo -e "${RED}❌ Opción inválida${NC}"; sleep 1 ;;
         esac
@@ -2759,41 +2767,75 @@ grub_guide_header() {
     echo -e "${NC}"
 }
 
+# Comandos calculados para esta PC (si el script corre en el sistema instalado)
+guide_my_commands() {
+    is_live_session && return 1
+    rescue_card_collect 2>/dev/null && $rc_ok && ! $rc_crypt || return 1
+    echo -e "${GREEN}${BOLD}⭐ TUS COMANDOS (calculados para esta PC)${NC}"
+    case $1 in
+        prompt)
+            echo -e "${GREEN}  Escribe estas líneas en 'grub>' y aparece el menú de siempre:${NC}"
+            $rc_lvm && echo -e "${CYAN}    insmod lvm${NC}"
+            echo -e "${CYAN}    search --no-floppy --fs-uuid --set=root $rc_uuid"
+            echo -e "    configfile $rc_grubpath/grub.cfg${NC}"
+            echo -e "${GREEN}  O, para arrancar directo sin menú:${NC}"
+            echo -e "${CYAN}    search --no-floppy --fs-uuid --set=root $rc_uuid"
+            echo -e "    linux $rc_kernel $rc_root ro"
+            echo -e "    initrd $rc_initrd"
+            echo -e "    boot${NC}"
+            ;;
+        rescue)
+            echo -e "${GREEN}  Escribe estas 4 líneas en 'grub rescue>':${NC}"
+            echo -e "${CYAN}    set prefix=($rc_drive)$rc_grubpath"
+            echo -e "    set root=($rc_drive)"
+            echo -e "    insmod normal"
+            echo -e "    normal${NC}"
+            $rc_approx && echo -e "${YELLOW}  (el número de disco es calculado: si falla, prueba hd0, hd1, hd2...)${NC}"
+            ;;
+    esac
+    echo -e "${YELLOW}  📷 Sácales una foto, o guarda la tarjeta completa con la opción 14 (también al pendrive).${NC}"
+    echo -e "${YELLOW}  Si ya estás frente a 'grub>' en otra PC o no tienes la foto, sigue la guía de abajo.${NC}\n"
+}
+
 grub_prompt_guide() {
     grub_guide_header "📖 ARRANQUE MANUAL DESDE 'grub>'"
+    echo -e "Si al encender aparece ${BOLD}grub>${NC}, GRUB funciona pero no encuentra su menú."
+    echo -e "Desde ahí se puede arrancar escribiendo unos comandos. ${BOLD}TAB${NC} autocompleta.\n"
+    guide_my_commands prompt
     cat << 'EOF'
-Si al encender aparece "grub>" (GRUB cargó, pero no encuentra su menú),
-puedes arrancar Ubuntu a mano. La tecla TAB autocompleta nombres y rutas.
+CAMINO RÁPIDO: QUE GRUB BUSQUE SOLO DÓNDE ESTÁ UBUNTU
+  Escribe estas 2 líneas. La primera busca la partición que tiene el menú:
+    search --no-floppy --file --set=root /boot/grub/grub.cfg
+    configfile /boot/grub/grub.cfg
+  • Si aparece el menú de siempre: elige tu sistema y ve al PASO FINAL.
+  • Si dice "no such device": puede que /boot esté en su propia partición
+    o que uses btrfs. Prueba cambiando /boot/grub/grub.cfg (en las 2 líneas) por:
+        /grub/grub.cfg              (/boot en partición aparte)
+        /@/boot/grub/grub.cfg       (btrfs)
+  • Si tienes DOS Linux instalados, puede encontrar el otro primero:
+    usa el CAMINO MANUAL.
 
-PASO 1: ENCONTRAR LA PARTICIÓN DE KUBUNTU
-    ls
-  Verás algo como: (hd0) (hd0,gpt1) (hd0,gpt2) ...  (o msdos1, msdos2 en discos MBR)
-  Prueba cada una hasta ver las carpetas del sistema (boot/, etc/, home/...):
-    ls (hd0,gpt2)/
+CAMINO MANUAL: BUSCAR LA PARTICIÓN A MANO
+  1. Lista los discos y particiones:
+        ls
+     Verás algo como: (hd0) (hd0,gpt1) (hd0,gpt2) ...  (o msdos1, msdos2)
+  2. Mira cada una hasta encontrar la de Ubuntu (muestra boot/, etc/, home/...):
+        ls (hd0,gpt2)/
+     Con "ls (hd0,gpt2)" (sin la barra) GRUB dice el tipo (ext*) y el tamaño.
+  3. Arranca con ella (cambia hd0,gpt2 por la tuya):
+        set root=(hd0,gpt2)
+        linux /boot/vmlinuz root=/dev/sda2 ro
+        initrd /boot/initrd.img
+        boot
+     • /boot/vmlinuz e /boot/initrd.img siempre apuntan al kernel más nuevo.
+     • root= usa el nombre de LINUX, no el de GRUB: (hd0,gpt2) suele ser
+       /dev/sda2 (SATA) o /dev/nvme0n1p2 (NVMe). Si te equivocas, verás
+       "(initramfs)": reinicia y prueba con el otro nombre.
+     • Con /boot en partición aparte: usa esa partición y quita "/boot":
+       linux /vmlinuz ...  e  initrd /initrd.img
 
-PASO 2: CARGAR MÓDULOS Y ARRANCAR
-  (cambia hd0,gpt2 y /dev/sda2 por los tuyos)
-    set root=(hd0,gpt2)
-    insmod part_gpt          (en discos MBR: insmod part_msdos)
-    insmod ext2              (sirve también para ext4)
-    insmod linux
-    linux /boot/vmlinuz root=/dev/sda2 ro
-    initrd /boot/initrd.img
-    boot
-
-  • /boot/vmlinuz e /boot/initrd.img apuntan siempre al kernel más nuevo,
-    así no hace falta escribir la versión (vmlinuz-6.8.0-xx...).
-  • root= usa el nombre de Linux, no el de GRUB:
-      (hd0,gpt2) suele ser /dev/sda2 en discos SATA y /dev/nvme0n1p2 en NVMe.
-    Si te equivocas, verás "(initramfs)": reinicia y prueba con otro nombre.
-  • Si /boot está en su propia partición, en PASO 2 usa esa partición y
-    quita "/boot" de las rutas: linux /vmlinuz ... e initrd /initrd.img
-
-PASO 3: YA DENTRO DEL SISTEMA (reparar de forma permanente)
-  Ejecuta este script → opción 12 → 2 (REPARACIÓN RÁPIDA), o a mano:
-    sudo grub-install /dev/sda        (en UEFI basta: sudo grub-install)
-    sudo update-grub
-  (update-grub es lo mismo que "grub-mkconfig -o /boot/grub/grub.cfg")
+PASO FINAL: YA DENTRO DEL SISTEMA (repararlo de forma permanente)
+  Ejecuta este script → opción 12 → 2 (REPARACIÓN RÁPIDA) o → 3 (COMPLETA).
 EOF
     echo -e "\n${YELLOW}📌 Presiona Enter para volver...${NC}"
     read -r
@@ -2801,31 +2843,31 @@ EOF
 
 grub_rescue_guide() {
     grub_guide_header "🛡️ GUÍA PARA 'grub rescue>'"
+    echo -e "${BOLD}grub rescue>${NC} significa que GRUB arrancó pero no encuentra ni sus propios"
+    echo -e "archivos. Es un modo muy limitado: solo existen ${BOLD}ls${NC}, ${BOLD}set${NC} e ${BOLD}insmod${NC}"
+    echo -e "(no puede buscar solo). Hay que decirle dónde está su carpeta.\n"
+    guide_my_commands rescue
     cat << 'EOF'
-"grub rescue>" significa que GRUB no encuentra ni sus módulos: aquí no existen
-los comandos "linux" ni "initrd", solo ls, set e insmod.
-
-PASO 1: IDENTIFICAR LAS PARTICIONES
+PASO 1: VER LAS PARTICIONES
     ls
   Verás algo como: (hd0) (hd0,gpt1) (hd0,gpt2) (hd0,gpt3)
 
-PASO 2: ENCONTRAR LA PARTICIÓN DE LINUX
-  Prueba cada partición con:
+PASO 2: ENCONTRAR LA QUE TIENE GRUB
+  Prueba cada una hasta que una muestre archivos (grub.cfg, fonts, x86_64-efi...):
     ls (hd0,gpt2)/boot/grub
-  La que muestre archivos (como grub.cfg o la carpeta x86_64-efi / i386-pc)
-  es la correcta.
+  • "unknown filesystem": esa no es (suele ser la EFI o la de Windows), sigue.
+  • /boot en partición aparte:  ls (hd0,gpt3)/grub
+  • btrfs:                       ls (hd0,gpt2)/@/boot/grub
 
-PASO 3: CARGAR GRUB NORMALMENTE
-  Con la partición encontrada (ej: hd0,gpt2):
+PASO 3: CARGAR GRUB (cambia hd0,gpt2 y la ruta por las que encontraste)
     set prefix=(hd0,gpt2)/boot/grub
     set root=(hd0,gpt2)
     insmod normal
     normal
+  Aparece el menú de siempre (o "grub>": entonces sigue la guía 11).
 
-  Aparecerá el menú de GRUB (o el prompt "grub>": sigue la guía 11).
-
-PASO 4: UNA VEZ EN EL SISTEMA
-  Ejecuta este script → opción 12 → 2 (REPARACIÓN RÁPIDA).
+PASO 4: YA DENTRO DEL SISTEMA
+  Ejecuta este script → opción 12 → 2 (REPARACIÓN RÁPIDA) o → 3 (COMPLETA).
 
 SI "insmod normal" FALLA
   Los archivos de GRUB están dañados: arranca desde un USB de Ubuntu (de tu sabor)
@@ -3321,7 +3363,10 @@ regen_grub() {
     rc=$?
     echo "[$(date '+%H:%M:%S')] \$ update-grub" >> "$LOG_FILE"
     echo "$out" >> "$LOG_FILE"
-    [ $rc -eq 0 ] && return 0
+    if [ $rc -eq 0 ]; then
+        rescue_card_refresh
+        return 0
+    fi
 
     log_error "Falló update-grub (código $rc). El menú de arranque anterior sigue intacto."
     echo -e "${YELLOW}Últimas líneas del error:${NC}"
@@ -3861,7 +3906,7 @@ uefi_ubuntu_first() {
 grub_full_repair() {
     grub_guide_header "🛠️ REPARACIÓN COMPLETA DEL ARRANQUE"
     local uefi=false disk step=0 total=4 failed=()
-    [ -d /sys/firmware/efi ] && { uefi=true; total=6; }
+    [ -d /sys/firmware/efi ] && { uefi=true; total=7; }
 
     echo -e "${PURPLE}📋 Se hará, en orden:${NC}"
     $uefi && echo -e "  • Verificar y reparar la partición EFI"
@@ -3869,7 +3914,8 @@ grub_full_repair() {
     echo -e "  • Reinstalar GRUB en $($uefi && echo "la partición EFI" || echo "el disco del sistema")"
     echo -e "  • Regenerar el menú de arranque"
     $uefi && echo -e "  • Poner ${FLAVOR_NAME} primero en el orden de arranque UEFI"
-    echo -e "  • Comprobar el resultado"
+    $uefi && echo -e "  • Arranque de respaldo UEFI (se pregunta; si ya está, se actualiza)"
+    echo -e "  • Comprobar el resultado y actualizar la tarjeta de rescate"
     echo -e "\n${YELLOW}ℹ Para un sistema que NO arranca, usa la opción 10 desde un Live USB${NC}\n"
     confirm "${PURPLE}¿Empezar la reparación completa?${NC}" || return 0
 
@@ -3916,6 +3962,18 @@ grub_full_repair() {
     if $uefi; then
         step=$((step + 1)); echo -e "\n${PURPLE}[$step/$total] Orden de arranque UEFI...${NC}"
         uefi_ubuntu_first || failed+=("orden UEFI")
+        step=$((step + 1)); echo -e "\n${PURPLE}[$step/$total] Arranque de respaldo UEFI...${NC}"
+        if [ "$(uefi_fallback_state)" = nuestro ]; then
+            install_uefi_fallback || failed+=("arranque de respaldo")
+        elif [ "$(uefi_fallback_state)" = vacio ]; then
+            echo -e "${CYAN}ℹ Si la BIOS pierde la entrada de Ubuntu (al actualizarla o resetearla), la PC no arranca.${NC}"
+            echo -e "${CYAN}  El arranque de respaldo lo evita: arranca igual y Ubuntu vuelve a crear su entrada.${NC}"
+            if confirm "${PURPLE}¿Instalar el arranque de respaldo? (recomendado)${NC}"; then
+                install_uefi_fallback || failed+=("arranque de respaldo")
+            fi
+        else
+            echo -e "${CYAN}ℹ La ruta de respaldo la usa otro sistema: no se toca (opción 15 para más detalles)${NC}"
+        fi
     fi
 
     step=$((step + 1)); echo -e "\n${PURPLE}[$step/$total] Comprobando...${NC}"
@@ -3931,6 +3989,11 @@ grub_full_repair() {
         log_error "No hay entrada UEFI de Ubuntu"
         failed+=("entrada UEFI")
     fi
+    if [ -f "$RESCUE_CARD" ]; then
+        rescue_card_refresh && log_success "Tarjeta de rescate actualizada ($RESCUE_CARD)"
+    else
+        echo -e "${CYAN}💡 Consejo: genera tu tarjeta de rescate (opción 14) para estar preparado si falla otra vez${NC}"
+    fi
 
     echo ""
     if [ ${#failed[@]} -eq 0 ]; then
@@ -3938,6 +4001,405 @@ grub_full_repair() {
     else
         log_error "Pasos con problemas: ${failed[*]}. Detalles en: $LOG_FILE"
     fi
+}
+
+# ------------------------------------------------------------
+# Prepararse antes de que falle: tarjeta de rescate y arranque de respaldo
+# ------------------------------------------------------------
+
+RESCUE_CARD="$HOME/tarjeta-rescate-arranque.txt"
+RESCUE_CARD_ESP="/boot/efi/tarjeta-rescate-arranque.txt"
+
+# Datos del arranque de ESTA PC, como los ve GRUB. Deja variables rc_* listas para la tarjeta.
+rescue_card_collect() {
+    local grubdir=/boot/grub mnt fsroot rel dev part disk pnum pttype idx name
+    rc_ok=false rc_approx=false rc_crypt=false rc_lvm=false
+    [ -d "$grubdir" ] || return 1
+    dev=$(findmnt -no SOURCE -T "$grubdir" 2>/dev/null | sed 's/\[.*//')
+    [ -b "$dev" ] || return 1
+    mnt=$(findmnt -no TARGET -T "$grubdir")
+    fsroot=$(findmnt -no FSROOT -T "$grubdir")
+    rel=${grubdir#"${mnt%/}"}
+    # Ruta de /boot/grub DENTRO de su partición (con /boot aparte es /grub; con btrfs @ es /@/boot/grub)
+    rc_grubpath="${fsroot%/}$rel"
+    rc_bootpath="${rc_grubpath%/grub}"
+    rc_uuid=$(lsblk -no UUID "$dev" 2>/dev/null | head -n1)
+    rc_fstype=$(lsblk -no FSTYPE "$dev" 2>/dev/null | head -n1)
+    rc_size=$(lsblk -no SIZE "$dev" 2>/dev/null | head -n1 | tr -d ' ')
+    rc_dev=$dev
+
+    local abstraction
+    abstraction=$(sudo grub-probe --target=abstraction "$grubdir" 2>/dev/null)
+    [[ "$abstraction" == *crypt* || "$abstraction" == *luks* ]] && rc_crypt=true
+    [[ "$abstraction" == *lvm* ]] && rc_lvm=true
+    if lsblk -no TYPE "$dev" 2>/dev/null | grep -qx crypt; then rc_crypt=true; fi
+
+    # Nombre de la partición para GRUB, p. ej. (hd0,gpt2)
+    name=$(sudo grub-probe --target=drive "$grubdir" 2>/dev/null)
+    if [[ "$name" =~ ^\((hd[0-9]+,(gpt|msdos)[0-9]+|lvm/[^\)]+)\)$ ]]; then
+        rc_drive=${name:1:-1}
+    else
+        # grub-probe no lo sabe: se calcula (el número de disco puede variar)
+        part=$(basename "$(readlink -f "$dev")")
+        disk=$(lsblk -no PKNAME "/dev/$part" 2>/dev/null | head -n1)
+        pnum=$(cat "/sys/class/block/$part/partition" 2>/dev/null)
+        pttype=$(lsblk -dno PTTYPE "/dev/$disk" 2>/dev/null)
+        [ "$pttype" = dos ] && pttype=msdos
+        [ -n "$disk" ] && [ -n "$pnum" ] && [ -n "$pttype" ] || return 1
+        idx=$(lsblk -dno NAME,TYPE,RM 2>/dev/null | awk '$2 == "disk" && $3 == 0 {print $1}' | grep -nx "$disk" | cut -d: -f1)
+        rc_drive="hd$(( ${idx:-1} - 1 )),$pttype$pnum"
+        rc_approx=true
+    fi
+
+    # Parámetros del kernel con los que arrancó este sistema (root= y, si hay, rootflags=)
+    rc_root=$(tr ' ' '\n' < /proc/cmdline | grep -E '^(root|rootflags)=' | paste -sd' ')
+    rc_kernel="$rc_bootpath/vmlinuz"
+    rc_initrd="$rc_bootpath/initrd.img"
+    [ -e /boot/vmlinuz ] || rc_kernel="$rc_bootpath/vmlinuz-$(uname -r)"
+    [ -e /boot/initrd.img ] || rc_initrd="$rc_bootpath/initrd.img-$(uname -r)"
+    [ -n "$rc_uuid" ] && [ -n "$rc_root" ] && rc_ok=true
+}
+
+# La tarjeta en texto plano (para guardar, imprimir o fotografiar)
+rescue_card_text() {
+    local mode=BIOS
+    [ -d /sys/firmware/efi ] && mode=UEFI
+    echo "================================================================"
+    echo " TARJETA DE RESCATE DEL ARRANQUE - $(os_release_value PRETTY_NAME)"
+    echo " Generada el $(date '+%d/%m/%Y') con Ubuntu Ultimate Tools"
+    echo "================================================================"
+    echo ""
+    echo " Partición de arranque: $rc_dev ($rc_fstype, $rc_size) - modo $mode"
+    $rc_crypt || echo " GRUB la llama: ($rc_drive)$($rc_approx && echo "  (calculado: si falla, prueba hd0, hd1, hd2...)")"
+    echo " Su UUID (identificador único): $rc_uuid"
+    echo ""
+    if $rc_crypt; then
+        echo " ATENCIÓN: /boot está en un disco cifrado. Desde 'grub>' o"
+        echo " 'grub rescue>' no se puede arrancar a mano: usa un Live USB y"
+        echo " este script, opción 12 -> 10 (reparación automática)."
+        echo ""
+    else
+        echo "----------------------------------------------------------------"
+        echo " A) SI AL ENCENDER VES  grub>"
+        echo "----------------------------------------------------------------"
+        echo " Escribe estas 2 líneas (Enter después de cada una):"
+        echo ""
+        $rc_lvm && echo "    insmod lvm"
+        echo "    search --no-floppy --fs-uuid --set=root $rc_uuid"
+        echo "    configfile $rc_grubpath/grub.cfg"
+        echo ""
+        echo " Aparece el menú de siempre: elige tu sistema."
+        echo " Si dice 'no such device' o no aparece el menú, arranca directo:"
+        echo ""
+        echo "    search --no-floppy --fs-uuid --set=root $rc_uuid"
+        echo "    linux $rc_kernel $rc_root ro"
+        echo "    initrd $rc_initrd"
+        echo "    boot"
+        echo ""
+        echo "----------------------------------------------------------------"
+        echo " B) SI VES  grub rescue>"
+        echo "----------------------------------------------------------------"
+        echo " Escribe estas 4 líneas:"
+        echo ""
+        echo "    set prefix=($rc_drive)$rc_grubpath"
+        echo "    set root=($rc_drive)"
+        echo "    insmod normal"
+        echo "    normal"
+        echo ""
+        echo " Si dice 'no such partition' o 'unknown filesystem', el número"
+        echo " cambió (por ejemplo, porque hay un USB conectado). Escribe:"
+        echo "    ls"
+        echo " y prueba con cada partición hasta que una muestre archivos:"
+        echo "    ls (hd0,${rc_drive#*,})$rc_grubpath"
+        echo "    ls (hd1,${rc_drive#*,})$rc_grubpath      ...y así"
+        echo " Usa esa en las 4 líneas de arriba."
+        echo ""
+    fi
+    echo "----------------------------------------------------------------"
+    echo " C) CUANDO VUELVAS A ENTRAR AL SISTEMA"
+    echo "----------------------------------------------------------------"
+    echo " Arréglalo de forma permanente: este script, opción 12 -> 2"
+    echo " (reparación rápida) o 12 -> 3 (reparación completa)."
+    echo ""
+    echo "----------------------------------------------------------------"
+    echo " D) SI NADA DE ESTO FUNCIONA"
+    echo "----------------------------------------------------------------"
+    echo " Arranca con un USB de instalación de Ubuntu ('Probar Ubuntu'),"
+    echo " abre este script desde el pendrive y usa la opción 12 -> 10."
+    echo "    bash /media/\$USER/<pendrive>/ubuntu-ultimate-tools.sh"
+    echo "================================================================"
+}
+
+# Guarda la tarjeta en la carpeta personal y en la partición EFI (sin preguntas)
+rescue_card_write() {
+    rescue_card_collect && $rc_ok || return 1
+    rescue_card_text > "$RESCUE_CARD" || return 1
+    # En la partición EFI se puede leer desde un Live USB o desde Windows
+    if findmnt /boot/efi > /dev/null 2>&1; then
+        sudo cp "$RESCUE_CARD" "$RESCUE_CARD_ESP" 2>> "$LOG_FILE"
+    fi
+    return 0
+}
+
+# Pendrives montados: "carpeta|tamaño libre"
+mounted_usb_drives() {
+    findmnt -rno TARGET,SOURCE 2>/dev/null | awk '$1 ~ "^(/media/|/run/media/)" {print $1}' | while read -r dir; do
+        dir=$(printf '%b' "$dir")   # findmnt escapa los espacios como \x20
+        echo "$dir|$(df -h --output=avail "$dir" 2>/dev/null | tail -1 | tr -d ' ') libres"
+    done
+}
+
+# Copia la tarjeta y el script a un pendrive (para usarlos desde un Live USB)
+rescue_copy_to_usb() {
+    local drives=() i=0 d choice dir
+    mapfile -t drives < <(mounted_usb_drives)
+    if [ ${#drives[@]} -eq 0 ]; then
+        echo -e "${YELLOW}ℹ No hay ningún pendrive conectado. Conéctalo, ábrelo en el gestor de archivos${NC}"
+        echo -e "${YELLOW}  (así queda montado) y vuelve a esta opción.${NC}"
+        return 0
+    fi
+    echo -e "${PURPLE}💾 Pendrives conectados:${NC}"
+    for d in "${drives[@]}"; do
+        i=$((i + 1))
+        echo -e "  ${PURPLE}$i)${NC} ${d%%|*} (${d#*|})"
+    done
+    echo -e "  ${PURPLE}0)${NC} 🔙 No copiar"
+    read -r -p "📌 ¿En cuál copiar? " choice
+    if ! [[ "$choice" =~ ^[0-9]+$ ]] || [ "$choice" -lt 1 ] || [ "$choice" -gt ${#drives[@]} ]; then
+        echo -e "${YELLOW}ℹ No se copió nada${NC}"
+        return 0
+    fi
+    dir=${drives[$((choice - 1))]%%|*}
+    if cp "$RESCUE_CARD" "$dir/" 2>> "$LOG_FILE" && cp "$SCRIPT_PATH" "$dir/ubuntu-ultimate-tools.sh" 2>> "$LOG_FILE"; then
+        sync
+        log_success "Copiados en $dir: el script y la tarjeta de rescate"
+        echo -e "${CYAN}ℹ Desde el Live USB: bash /media/\$USER/$(basename "$dir")/ubuntu-ultimate-tools.sh → 12 → 10${NC}"
+    else
+        log_error "No se pudo copiar al pendrive (¿está lleno o protegido contra escritura?)"
+    fi
+}
+
+rescue_card_menu() {
+    grub_guide_header "🪪 TARJETA DE RESCATE DE ESTA PC"
+    if is_live_session; then
+        log_warning "Esto es un Live USB: la tarjeta se genera desde tu sistema instalado, cuando arranca bien"
+        echo -e "${YELLOW}  Si tu sistema no arranca, usa la opción 10.${NC}"
+        echo -e "\n${YELLOW}📌 Presiona Enter para volver...${NC}"; read -r
+        return 0
+    fi
+    cat << 'EXPL'
+Cuando GRUB se rompe, en lugar del menú aparece "grub>" o "grub rescue>" y hay
+que escribir comandos con el nombre exacto de TU disco. Ahí no se puede abrir
+este script ni buscar en internet desde la PC.
+
+Esta tarjeta trae esos comandos ya calculados para esta PC. Guárdala ahora,
+mientras todo funciona:
+  📷 sácale una FOTO con el celular (es lo más seguro: la tienes siempre),
+  💾 y cópiala al pendrive junto con este script (opción de abajo).
+Se guarda también en tu carpeta personal y en la partición EFI, y se actualiza
+sola cada vez que el script cambia GRUB.
+EXPL
+    echo ""
+    if ! rescue_card_write; then
+        log_error "No se pudieron leer los datos del arranque (¿falta /boot/grub?). Usa el diagnóstico (opción 1)"
+        echo -e "\n${YELLOW}📌 Presiona Enter para volver...${NC}"; read -r
+        return 1
+    fi
+    echo -e "${YELLOW}📌 Presiona Enter para ver la tarjeta...${NC}"; read -r
+    clear
+    # Los comandos para escribir, resaltados (líneas con sangría)
+    sed -E "s/^(    .*)$/$(printf '\033[1;36m')\1$(printf '\033[0m')/" "$RESCUE_CARD"
+    echo ""
+    echo -e "${GREEN}💾 Guardada en: $RESCUE_CARD${NC}"
+    findmnt /boot/efi > /dev/null 2>&1 && echo -e "${GREEN}💾 Copia en la partición EFI: $RESCUE_CARD_ESP${NC}"
+    echo ""
+    if confirm "${PURPLE}¿Copiar la tarjeta y este script a un pendrive?${NC}"; then
+        rescue_copy_to_usb
+    fi
+    echo -e "\n${YELLOW}📌 Presiona Enter para volver...${NC}"
+    read -r
+}
+
+# Actualiza la tarjeta si ya existe (después de cambiar GRUB o el kernel)
+rescue_card_refresh() {
+    [ -f "$RESCUE_CARD" ] || return 0
+    is_live_session && return 0
+    rescue_card_write 2>/dev/null || true
+}
+
+# ------------------------------------------------------------
+# Arranque de respaldo UEFI: \EFI\BOOT\BOOTX64.EFI es la ruta que el firmware
+# prueba cuando no tiene (o perdió) la entrada de Ubuntu. Con el "fallback" de
+# shim (fbx64.efi), además vuelve a crear la entrada de Ubuntu solo.
+# ------------------------------------------------------------
+
+UEFI_FALLBACK_MARK="$UUT_ETC/arranque-respaldo"
+UEFI_FALLBACK_HOOK="/etc/apt/apt.conf.d/99ubuntu-ultimate-tools-arranque-respaldo"
+UEFI_FALLBACK_TOOL="/usr/local/sbin/ubuntu-ultimate-tools-arranque-respaldo"
+UEFI_FALLBACK_BACKUP="$UUT_ETC/efi-boot-anterior"
+
+# El programa que copia los archivos: lo usa el script y lo llama apt después de
+# cada actualización, para que la copia nunca quede vieja.
+write_uefi_fallback_tool() {
+    sudo install -d -m 755 "$UUT_ETC" /usr/local/sbin
+    sudo tee "$UEFI_FALLBACK_TOOL" > /dev/null << 'TOOL'
+#!/bin/sh
+# Ubuntu Ultimate Tools: mantiene el arranque de respaldo UEFI (\EFI\BOOT) igual
+# al de Ubuntu (\EFI\ubuntu). Solo toca \EFI\BOOT si lo puso el script.
+MARK=/etc/ubuntu-ultimate-tools/arranque-respaldo
+ESP=/boot/efi
+[ -d /sys/firmware/efi ] && [ -f "$MARK" ] && mountpoint -q "$ESP" || exit 0
+SRC=$(find "$ESP/EFI" -maxdepth 1 -iname ubuntu | head -n1)
+DST=$(find "$ESP/EFI" -maxdepth 1 -iname boot | head -n1)
+[ -n "$SRC" ] || exit 0
+[ -n "$DST" ] || { DST="$ESP/EFI/BOOT"; mkdir -p "$DST"; }
+CUR=$(find "$DST" -maxdepth 1 -iname bootx64.efi | head -n1)
+# Si otro sistema reemplazó el archivo, no se toca
+if [ -n "$CUR" ] && [ "$(sha256sum < "$CUR" | cut -d' ' -f1)" != "$(cat "$MARK")" ]; then
+    [ "${1:-}" = "--forzar" ] || exit 0
+fi
+if [ -f "$SRC/shimx64.efi" ]; then
+    cp "$SRC/shimx64.efi" "$DST/BOOTX64.EFI" || exit 0
+    for f in grubx64.efi mmx64.efi; do [ -f "$SRC/$f" ] && cp "$SRC/$f" "$DST/$f"; done
+    # fbx64.efi vuelve a crear la entrada de Ubuntu en el firmware si se borró
+    for f in /usr/lib/shim/fbx64.efi.signed /usr/lib/shim/fbx64.efi; do
+        [ -f "$f" ] && { cp "$f" "$DST/fbx64.efi"; break; }
+    done
+elif [ -f "$SRC/grubx64.efi" ]; then
+    cp "$SRC/grubx64.efi" "$DST/BOOTX64.EFI" || exit 0
+else
+    exit 0
+fi
+[ -f "$SRC/grub.cfg" ] && cp "$SRC/grub.cfg" "$DST/grub.cfg"
+sha256sum < "$DST/BOOTX64.EFI" | cut -d' ' -f1 > "$MARK"
+exit 0
+TOOL
+    sudo chmod 755 "$UEFI_FALLBACK_TOOL"
+    echo "DPkg::Post-Invoke { \"$UEFI_FALLBACK_TOOL || true\"; };" | sudo tee "$UEFI_FALLBACK_HOOK" > /dev/null
+}
+
+# Estado de \EFI\BOOT\BOOTX64.EFI: vacio | nuestro | windows | otro
+uefi_fallback_state() {
+    local cur
+    cur=$(sudo find /boot/efi/EFI -maxdepth 2 -ipath '*/boot/bootx64.efi' 2>/dev/null | head -n1)
+    if [ -z "$cur" ]; then
+        echo vacio
+    elif [ -f "$UEFI_FALLBACK_MARK" ] && [ "$(sudo sha256sum < "$cur" | cut -d' ' -f1)" = "$(cat "$UEFI_FALLBACK_MARK")" ]; then
+        echo nuestro
+    elif sudo grep -qa 'Microsoft Corporation' "$cur" && ! sudo grep -qa -i 'shim' "$cur"; then
+        echo windows
+    else
+        echo otro
+    fi
+}
+
+install_uefi_fallback() {
+    local state
+    state=$(uefi_fallback_state)
+    case $state in
+        nuestro)
+            write_uefi_fallback_tool
+            sudo "$UEFI_FALLBACK_TOOL" --forzar
+            log_success "El arranque de respaldo ya estaba puesto: se actualizó"
+            return 0 ;;
+        windows)
+            log_warning "La ruta de respaldo la usa Windows: no se toca (Windows dejaría de arrancar por esa vía)"
+            echo -e "${YELLOW}  Si algún día la PC va directo a Windows sin mostrar GRUB: entra al menú de arranque${NC}"
+            echo -e "${YELLOW}  del BIOS (F12, F11, F8 o Esc al encender, según la marca), elige ubuntu y luego${NC}"
+            echo -e "${YELLOW}  usa este script → 12 → 8 para ponerlo primero.${NC}"
+            return 0 ;;
+        otro)
+            echo -e "${YELLOW}⚠ La ruta de respaldo ya tiene el arranque de otro sistema (otra distro o un programa).${NC}"
+            confirm "${PURPLE}¿Reemplazarlo por el de ${FLAVOR_NAME}? (se guarda una copia para volver atrás)${NC}" || return 0
+            sudo rm -rf "$UEFI_FALLBACK_BACKUP"
+            sudo cp -r "$(sudo find /boot/efi/EFI -maxdepth 1 -iname boot | head -n1)" "$UEFI_FALLBACK_BACKUP" \
+                || { log_error "No se pudo guardar la copia: no se cambió nada"; return 1; } ;;
+    esac
+    write_uefi_fallback_tool
+    echo "nuevo" | sudo tee "$UEFI_FALLBACK_MARK" > /dev/null
+    sudo "$UEFI_FALLBACK_TOOL" --forzar
+    if [ "$(uefi_fallback_state)" = nuestro ]; then
+        log_success "Arranque de respaldo instalado en la ruta de respaldo EFI/BOOT (se actualiza solo con cada actualización de GRUB)"
+    else
+        log_error "No se pudo instalar el arranque de respaldo (¿falta la carpeta EFI/ubuntu? Prueba la reparación completa)"
+        sudo rm -f "$UEFI_FALLBACK_MARK" "$UEFI_FALLBACK_HOOK"
+        return 1
+    fi
+}
+
+remove_uefi_fallback() {
+    local dir state
+    state=$(uefi_fallback_state)
+    if [ "$state" != nuestro ]; then
+        echo -e "${GREEN}✓ El arranque de respaldo no lo puso este script: no se toca${NC}"
+        sudo rm -f "$UEFI_FALLBACK_MARK" "$UEFI_FALLBACK_HOOK" "$UEFI_FALLBACK_TOOL"
+        return 0
+    fi
+    confirm "${PURPLE}¿Quitar el arranque de respaldo?${NC}" || return 0
+    dir=$(sudo find /boot/efi/EFI -maxdepth 1 -iname boot | head -n1)
+    # Solo los archivos que copia el script; si había otros, se quedan
+    sudo find "$dir" -maxdepth 1 -type f \( -iname bootx64.efi -o -iname grubx64.efi -o -iname mmx64.efi \
+        -o -iname fbx64.efi -o -iname grub.cfg \) -delete
+    if [ -d "$UEFI_FALLBACK_BACKUP" ]; then
+        sudo cp -r "$UEFI_FALLBACK_BACKUP/." "$dir/" && sudo rm -rf "$UEFI_FALLBACK_BACKUP" \
+            && log_success "Se restauró el arranque de respaldo que había antes"
+    fi
+    sudo rmdir "$dir" 2>/dev/null
+    sudo rm -f "$UEFI_FALLBACK_MARK" "$UEFI_FALLBACK_HOOK" "$UEFI_FALLBACK_TOOL"
+    log_success "Arranque de respaldo quitado"
+}
+
+uefi_fallback_menu() {
+    grub_guide_header "🛟 ARRANQUE DE RESPALDO UEFI"
+    if [ ! -d /sys/firmware/efi ]; then
+        log_warning "Este equipo arranca en modo BIOS (Legacy): esto es solo para UEFI"
+        echo -e "${YELLOW}  En BIOS, GRUB vive en el propio disco y no depende de entradas del firmware.${NC}"
+        echo -e "\n${YELLOW}📌 Presiona Enter para volver...${NC}"; read -r
+        return 0
+    fi
+    if ! findmnt /boot/efi > /dev/null 2>&1; then
+        log_error "La partición EFI no está montada en /boot/efi (revisa la opción 5)"
+        echo -e "\n${YELLOW}📌 Presiona Enter para volver...${NC}"; read -r
+        return 1
+    fi
+    cat << 'EXPL'
+El firmware (la BIOS UEFI) guarda una lista de sistemas para arrancar. A veces
+esa lista se borra: al actualizar la BIOS, al quitar la pila, al cambiar el disco
+de PC o por un reseteo. Entonces la PC dice "no hay sistema" o va directo a
+Windows, aunque Ubuntu y GRUB estén perfectos.
+
+El arranque de respaldo es una copia del arranque de Ubuntu en la "ruta de
+emergencia" (\EFI\BOOT\BOOTX64.EFI), la que el firmware prueba cuando no
+encuentra nada en su lista. Si la entrada se borra:
+  1. La PC arranca igual por esa ruta.
+  2. Ubuntu vuelve a crear su entrada solo, sin que hagas nada.
+
+  • Funciona con Secure Boot (usa los mismos archivos firmados de Ubuntu).
+  • Se actualiza solo cada vez que se actualiza GRUB.
+  • Si esa ruta la usa Windows, no se toca.
+EXPL
+    local state
+    state=$(uefi_fallback_state)
+    echo ""
+    case $state in
+        nuestro) echo -e "${GREEN}✓ Estado: INSTALADO (lo puso este script)${NC}" ;;
+        vacio) echo -e "${YELLOW}○ Estado: no hay arranque de respaldo${NC}" ;;
+        windows) echo -e "${CYAN}ℹ Estado: la ruta de respaldo es de Windows${NC}" ;;
+        *) echo -e "${YELLOW}ℹ Estado: la ruta de respaldo tiene el arranque de otro sistema${NC}" ;;
+    esac
+    echo ""
+    echo -e "  ${PURPLE}1)${NC} $([ "$state" = nuestro ] && echo "Actualizarlo ahora" || echo "Instalarlo")"
+    echo -e "  ${PURPLE}2)${NC} Quitarlo (vuelve a como estaba)"
+    echo -e "  ${PURPLE}0)${NC} 🔙 Volver"
+    local choice
+    read -r -p "📌 Opción (0-2): " choice
+    case $choice in
+        1) install_uefi_fallback ;;
+        2) remove_uefi_fallback ;;
+        *) return 0 ;;
+    esac
+    echo -e "\n${YELLOW}📌 Presiona Enter para volver...${NC}"
+    read -r
 }
 
 # ============================================================

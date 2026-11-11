@@ -37,6 +37,12 @@ sabor y el escritorio detectados, y las listas muestran solo lo que está instal
 
 ---
 
+## Tarjeta de rescate de tu PC (opción 12 → 14)
+
+![Tarjeta de rescate de tu PC (opción 12 → 14)](17-tarjeta-rescate.png)
+
+---
+
 ## Personalizar el menú de GRUB (opción 12 → 9)
 
 ![Personalizar el menú de GRUB (opción 12 → 9)](06-personalizar-grub.png)
