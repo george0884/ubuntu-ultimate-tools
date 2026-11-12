@@ -84,6 +84,10 @@ pause() {
 confirm() {
     local prompt="$1"
     local response
+    if [ "${FORCE_YES:-false}" = true ]; then
+        echo -e "$prompt ${YELLOW}→ sí (ya confirmado)${NC}"
+        return 0
+    fi
     if $AUTO_MODE; then
         echo -e "$prompt ${YELLOW}→ no (modo automático)${NC}"
         return 1
@@ -1842,6 +1846,638 @@ EOF
     pause
 }
 
+# ------------------------------------------------------------
+# Desarrollo: compilar APK (SDK de Android), Android Studio y Flatpak
+# ------------------------------------------------------------
+
+ANDROID_SDK="$HOME/Android/Sdk"            # La misma carpeta que usa Android Studio
+ANDROID_ENV="$HOME/.config/ubuntu-ultimate-tools/android-sdk.sh"
+ANDROID_ENV_MARK="# Ubuntu Ultimate Tools: Android SDK"
+ANDROID_STUDIO_DIR="/opt/android-studio"
+ANDROID_STUDIO_STATE="$STATE_DIR/android-studio.txt"   # "google" o "snap"
+ANDROID_STUDIO_DESKTOP="$HOME/.local/share/applications/android-studio.desktop"
+FLATPAK_SDK_LIST="$STATE_DIR/flatpak-sdk.txt"
+
+android_tools_installed() { [ -x "$ANDROID_SDK/cmdline-tools/latest/bin/sdkmanager" ]; }
+android_studio_installed() {
+    [ -x "$ANDROID_STUDIO_DIR/bin/studio" ] || [ -x "$ANDROID_STUDIO_DIR/bin/studio.sh" ] \
+        || snap list android-studio &> /dev/null
+}
+
+# Avisa si no hay espacio suficiente (en GB) en la carpeta dada
+enough_space() {
+    local dir="$1" need="$2" free
+    free=$(df -BG --output=avail "$dir" 2>/dev/null | tail -1 | tr -dc '0-9')
+    [ -z "$free" ] || [ "$free" -ge "$need" ] && return 0
+    log_error "Hace falta unos $need GB libres en $dir y hay $free GB"
+    return 1
+}
+
+# Comprueba el SHA de un archivo (sha1 o sha256 según el largo)
+check_sum() {
+    local file="$1" sum="$2" got
+    case ${#sum} in
+        40) got=$(sha1sum < "$file" | cut -d' ' -f1) ;;
+        64) got=$(sha256sum < "$file" | cut -d' ' -f1) ;;
+        *) return 1 ;;
+    esac
+    [ "$got" = "$sum" ]
+}
+
+# JDK que usa Gradle: el 21 si existe en tu Ubuntu, si no el 17
+install_jdk() {
+    local jdk
+    jdk=$(available_pkgs openjdk-21-jdk-headless openjdk-17-jdk-headless | head -n1)
+    if [ -z "$jdk" ]; then
+        log_error "No hay JDK 17 ni 21 en tus repositorios"
+        return 1
+    fi
+    apt_install_recorded "$jdk" || return 1
+    JAVA_HOME_DIR=$(dirname "$(dirname "$(dpkg -L "$jdk" 2>/dev/null | grep -m1 '/bin/javac$')")")
+    [ -x "$JAVA_HOME_DIR/bin/javac" ] || { log_error "No se encontró el JDK instalado"; return 1; }
+}
+
+# Variables para la terminal: ANDROID_HOME, JAVA_HOME y las herramientas en el PATH
+write_android_env() {
+    mkdir -p "$(dirname "$ANDROID_ENV")"
+    cat > "$ANDROID_ENV" << ENV
+# Creado por Ubuntu Ultimate Tools: herramientas para compilar APK
+export ANDROID_HOME="$ANDROID_SDK"
+export ANDROID_SDK_ROOT="\$ANDROID_HOME"
+export JAVA_HOME="\${JAVA_HOME:-$JAVA_HOME_DIR}"
+_uut_bt=\$(ls -d "\$ANDROID_HOME"/build-tools/* 2>/dev/null | sort -V | tail -n1)
+export PATH="\$ANDROID_HOME/cmdline-tools/latest/bin:\$ANDROID_HOME/platform-tools:\${_uut_bt:+\$_uut_bt:}\$PATH"
+unset _uut_bt
+ENV
+    local rc
+    for rc in "$HOME/.bashrc" "$HOME/.profile"; do
+        [ -f "$rc" ] || continue
+        grep -qF "$ANDROID_ENV_MARK" "$rc" && continue
+        echo "[ -f \"$ANDROID_ENV\" ] && . \"$ANDROID_ENV\"  $ANDROID_ENV_MARK" >> "$rc"
+    done
+}
+
+# Paquetes de Google para la última versión estable de Android
+android_sdk_packages() {
+    local list platform build
+    list=$("$ANDROID_SDK/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$ANDROID_SDK" --list 2>/dev/null)
+    platform=$(grep -oE '^ *platforms;android-[0-9]+ ' <<< "$list" | tr -d ' ' | sort -t- -k2 -n | tail -n1)
+    build=$(grep -oE '^ *build-tools;[0-9.]+ ' <<< "$list" | tr -d ' ' | sort -V | tail -n1)
+    echo platform-tools $platform $build
+}
+
+install_android_tools() {
+    echo -e "${BLUE}🤖 Herramientas para compilar APK (sin Android Studio)${NC}"
+    echo -e "${CYAN}  Java (JDK) + SDK de Android de Google + adb. Unos 3 GB en $ANDROID_SDK${NC}"
+    enough_space "$HOME" 4 || return 1
+    apt_update
+    install_jdk || return 1
+    # Reglas para que Linux reconozca el celular por USB (adb sin sudo) y unzip para el SDK
+    apt_install_recorded android-sdk-platform-tools-common unzip || return 1
+    getent group plugdev > /dev/null && ! id -nG | grep -qw plugdev \
+        && run "No se pudo dar permiso al USB" sudo usermod -aG plugdev "$USER"
+
+    if ! android_tools_installed; then
+        local xml url sum tmp
+        echo -e "${BLUE}⬇ Buscando la última versión de las herramientas de Google...${NC}"
+        # La misma lista que usa sdkmanager: dice el archivo y su suma de comprobación
+        xml=$(wget -qO- https://dl.google.com/android/repository/repository2-3.xml 2>> "$LOG_FILE")
+        read -r sum url < <(awk '
+            /<remotePackage path="cmdline-tools;latest">/ { on = 1 }
+            on && /<checksum/ { c = $0; gsub(/.*">|<\/checksum>.*/, "", c) }
+            on && /<url>/ { u = $0; gsub(/.*<url>|<\/url>.*/, "", u); if (u ~ /linux/) { print c, u; exit } }
+            on && /<\/remotePackage>/ { on = 0 }' <<< "$xml")
+        if [[ ! "$url" =~ ^commandlinetools-linux-[0-9]+_latest\.zip$ ]]; then
+            log_error "No se pudo consultar la versión de las herramientas de Google (¿sin internet?)"
+            return 1
+        fi
+        tmp=$(mktemp -d)
+        echo -e "${BLUE}⬇ Descargando $url...${NC}"
+        if ! wget -q --show-progress -O "$tmp/tools.zip" "https://dl.google.com/android/repository/$url" \
+            || ! check_sum "$tmp/tools.zip" "$sum"; then
+            log_error "La descarga de las herramientas de Google falló o llegó dañada"
+            rm -rf "$tmp"
+            return 1
+        fi
+        mkdir -p "$ANDROID_SDK/cmdline-tools"
+        rm -rf "$ANDROID_SDK/cmdline-tools/latest"
+        if ! unzip -q "$tmp/tools.zip" -d "$tmp" || ! mv "$tmp/cmdline-tools" "$ANDROID_SDK/cmdline-tools/latest"; then
+            log_error "No se pudieron descomprimir las herramientas de Google"
+            rm -rf "$tmp"
+            return 1
+        fi
+        rm -rf "$tmp"
+    fi
+
+    export JAVA_HOME="$JAVA_HOME_DIR"
+    local sdkm="$ANDROID_SDK/cmdline-tools/latest/bin/sdkmanager" pkgs
+    echo -e "${BLUE}📜 Aceptando las licencias del SDK de Android...${NC}"
+    yes 2>/dev/null | "$sdkm" --sdk_root="$ANDROID_SDK" --licenses >> "$LOG_FILE" 2>&1
+    read -r -a pkgs <<< "$(android_sdk_packages)"
+    if [ ${#pkgs[@]} -lt 3 ]; then
+        log_error "No se pudo leer la lista de paquetes del SDK (detalles en $LOG_FILE)"
+        return 1
+    fi
+    echo -e "${BLUE}⬇ Instalando ${pkgs[*]}...${NC}"
+    run_visible "No se pudo instalar el SDK de Android" "$sdkm" --sdk_root="$ANDROID_SDK" "${pkgs[@]}" || return 1
+    # Si ya estaba instalado, se actualiza todo lo que tenga versión nueva (también el NDK)
+    echo -e "${BLUE}🔄 Actualizando los paquetes del SDK que ya tenías...${NC}"
+    run "No se pudo actualizar el SDK" "$sdkm" --sdk_root="$ANDROID_SDK" --update
+    write_android_env
+    mkdir -p "$STATE_DIR"
+    log_success "Listo para compilar APK (Android ${pkgs[1]#platforms;android-}, ${pkgs[2]})"
+    cat << 'GUIA'
+
+  📖 CÓMO COMPILAR UN APK (abre una terminal NUEVA para que tome las variables)
+     cd carpeta-de-tu-proyecto
+     ./gradlew assembleDebug        → app/build/outputs/apk/debug/app-debug.apk
+     ./gradlew assembleRelease      → APK para publicar (hay que firmarlo)
+
+  🧩 PROYECTOS CON VARIANTES (por ejemplo, Telegram y sus derivados):
+     ./gradlew tasks                → lista todo lo que se puede compilar
+     ./gradlew :modulo:tasks        → solo las de un módulo (busca assemble...)
+     El APK queda en <módulo>/build/outputs/apk/<variante>/
+
+  ⚙️ NDK Y CMAKE (proyectos con código C/C++): no hace falta instalarlos a mano.
+     Como las licencias ya están aceptadas, Gradle baja solo la versión exacta
+     que pide el proyecto (ndkVersion) la primera vez que compilas.
+
+  🔄 ACTUALIZAR: vuelve a usar esta opción (actualiza el SDK). Tu proyecto:
+     git pull  y compila de nuevo.
+
+  🔑 FIRMAR (para compartir o publicar): crea tu clave UNA vez y guárdala bien;
+     si la pierdes no podrás actualizar tu app:
+     keytool -genkey -v -keystore mi-clave.jks -alias mi-app -keyalg RSA -validity 10000
+     apksigner sign --ks mi-clave.jks app-release-unsigned.apk
+
+  📱 PROBAR EN TU CELULAR: activa "Depuración USB" (Ajustes → Opciones de
+     desarrollador), conéctalo y: adb install app-debug.apk
+     (cierra sesión y vuelve a entrar la primera vez para el permiso del USB)
+GUIA
+}
+
+# El emulador de Android necesita la virtualización del procesador (KVM)
+check_kvm() {
+    echo -e "${BLUE}🖥️ Emulador de Android: comprobando la virtualización (KVM)...${NC}"
+    if ! grep -Eqw 'vmx|svm' /proc/cpuinfo; then
+        log_warning "Tu procesador no tiene virtualización: el emulador no funcionará. Prueba en tu celular por USB."
+        return 0
+    fi
+    if [ ! -e /dev/kvm ]; then
+        log_warning "La virtualización está APAGADA en la BIOS: el emulador será muy lento o no abrirá"
+        echo -e "${YELLOW}  Actívala al encender (Supr, F2 o F10): busca 'Intel VT-x', 'Virtualization Technology'${NC}"
+        echo -e "${YELLOW}  o en AMD 'SVM Mode', ponla en Enabled, guarda y reinicia.${NC}"
+        return 0
+    fi
+    if getent group kvm > /dev/null && ! id -nG | grep -qw kvm; then
+        run "No se pudo dar permiso para KVM" sudo usermod -aG kvm "$USER" \
+            && log_success "Permiso para el emulador listo (cierra sesión y vuelve a entrar)"
+    else
+        log_success "La virtualización está activa: el emulador irá rápido"
+    fi
+}
+
+# Android Studio oficial de Google: la página de descargas tiene el enlace y su SHA-256
+install_android_studio_google() {
+    local html url file sum tmp old=""
+    enough_space "$HOME" 2 && enough_space /opt 4 || return 1
+    command -v wget &> /dev/null || { apt_update; apt_install wget; }
+    echo -e "${BLUE}⬇ Buscando la última versión estable en developer.android.com...${NC}"
+    html=$(wget -qO- https://developer.android.com/studio 2>> "$LOG_FILE" | tr -d '\n')
+    url=$(grep -oE 'https://redirector\.gvt1\.com/edgedl/android/studio/ide-zips/[0-9.]+/android-studio-[0-9.]+-linux\.tar\.gz' <<< "$html" | head -n1)
+    if [ -z "$url" ]; then
+        log_error "No se encontró la descarga de Android Studio (¿sin internet o cambió la página de Google?)"
+        return 1
+    fi
+    file=${url##*/}
+    sum=$(grep -oE "${file//./\\.}.{0,800}" <<< "$html" | grep -oE '\b[0-9a-f]{64}\b' | head -n1)
+    tmp=$(mktemp -d -p "${XDG_CACHE_HOME:-$HOME/.cache}" 2>/dev/null || mktemp -d)
+    echo -e "${BLUE}⬇ Descargando $file (más de 1 GB)...${NC}"
+    if ! wget -q --show-progress -O "$tmp/$file" "$url"; then
+        log_error "No se pudo descargar Android Studio"
+        rm -rf "$tmp"
+        return 1
+    fi
+    if [ -n "$sum" ]; then
+        if ! check_sum "$tmp/$file" "$sum"; then
+            log_error "La descarga de Android Studio llegó dañada (la suma de comprobación no coincide)"
+            rm -rf "$tmp"
+            return 1
+        fi
+        log_success "Descarga verificada (SHA-256)"
+    else
+        log_warning "Google no publicó la suma de comprobación en su página: no se pudo verificar la descarga"
+        confirm "${YELLOW}¿Instalarla igual? (viene de la descarga oficial de Google por HTTPS)${NC}" \
+            || { rm -rf "$tmp"; return 1; }
+    fi
+    # Si había una versión anterior, se aparta hasta que la nueva quede instalada
+    if [ -d "$ANDROID_STUDIO_DIR" ]; then
+        old="$ANDROID_STUDIO_DIR.anterior"
+        sudo rm -rf "$old"
+        sudo mv "$ANDROID_STUDIO_DIR" "$old"
+    fi
+    if ! sudo tar -xzf "$tmp/$file" -C /opt >> "$LOG_FILE" 2>&1 || [ ! -d "$ANDROID_STUDIO_DIR/bin" ]; then
+        log_error "No se pudo descomprimir Android Studio"
+        sudo rm -rf "$ANDROID_STUDIO_DIR"
+        [ -n "$old" ] && sudo mv "$old" "$ANDROID_STUDIO_DIR"
+        rm -rf "$tmp"
+        return 1
+    fi
+    [ -n "$old" ] && sudo rm -rf "$old"
+    rm -rf "$tmp"
+
+    local exe=studio icon=studio.svg
+    [ -x "$ANDROID_STUDIO_DIR/bin/studio" ] || exe=studio.sh
+    [ -f "$ANDROID_STUDIO_DIR/bin/$icon" ] || icon=studio.png
+    mkdir -p "$(dirname "$ANDROID_STUDIO_DESKTOP")"
+    cat > "$ANDROID_STUDIO_DESKTOP" << DESKTOP
+[Desktop Entry]
+Type=Application
+Name=Android Studio
+Comment=Crear apps para Android
+Exec="$ANDROID_STUDIO_DIR/bin/$exe" %f
+Icon=$ANDROID_STUDIO_DIR/bin/$icon
+Categories=Development;IDE;
+Terminal=false
+StartupWMClass=jetbrains-studio
+DESKTOP
+    mkdir -p "$STATE_DIR"
+    echo google > "$ANDROID_STUDIO_STATE"
+    file=${file#android-studio-}
+    log_success "Android Studio ${file%-linux.tar.gz} instalado en $ANDROID_STUDIO_DIR (está en el menú de aplicaciones)"
+}
+
+install_android_studio_snap() {
+    if ! command -v snap &> /dev/null || [ -f /etc/apt/preferences.d/nosnap.pref ]; then
+        log_error "Snap no está instalado en este sistema (opción 11 para reinstalarlo, o usa la versión de Google)"
+        return 1
+    fi
+    echo -e "${BLUE}⬇ Instalando el snap de Android Studio (más de 1 GB)...${NC}"
+    run_visible "No se pudo instalar el snap de Android Studio" sudo snap install android-studio --classic || return 1
+    mkdir -p "$STATE_DIR"
+    echo snap > "$ANDROID_STUDIO_STATE"
+    log_success "Android Studio instalado (snap: se actualiza solo)"
+}
+
+install_android_studio() {
+    if ! has_desktop; then
+        log_warning "Android Studio necesita un escritorio (este sistema no tiene)"
+        return 1
+    fi
+    if [ "$(dpkg --print-architecture)" != amd64 ]; then
+        log_warning "Android Studio para Linux solo existe para PC de 64 bits (amd64)"
+        return 1
+    fi
+    echo -e "\n${BLUE}🤖 ANDROID STUDIO - para programar apps de Android (con emulador)${NC}"
+    echo -e "${CYAN}  Ocupa unos 3 GB, más el SDK y los emuladores que bajes (unos 10 GB en total).${NC}"
+    echo -e "${CYAN}  La primera vez que lo abras, un asistente baja el SDK a $ANDROID_SDK${NC}"
+    echo -e "${CYAN}  (si ya instalaste las herramientas para compilar APK, las usa).${NC}\n"
+    echo -e "  ${BLUE}1)${NC} Versión oficial de Google (recomendado): en $ANDROID_STUDIO_DIR, se actualiza"
+    echo -e "     desde el propio Android Studio (Ayuda → Buscar actualizaciones)"
+    echo -e "  ${BLUE}2)${NC} Snap: se actualiza solo con el sistema (lo empaqueta la comunidad, no Google)"
+    echo -e "  ${BLUE}0)${NC} 🔙 No instalar"
+    local choice
+    read -r -p "📌 Opción (0-2): " choice
+    case $choice in
+        1) install_android_studio_google || return 1 ;;
+        2) install_android_studio_snap || return 1 ;;
+        *) echo -e "${YELLOW}ℹ No se instaló Android Studio${NC}"; return 0 ;;
+    esac
+    check_kvm
+}
+
+# Quita Android Studio y/o el SDK (las claves de firma de ~/.android nunca se tocan)
+remove_android() {
+    local found=false
+    if android_studio_installed; then
+        found=true
+        if confirm "${RED}¿Quitar Android Studio?${NC}"; then
+            if snap list android-studio &> /dev/null; then
+                run "No se pudo quitar el snap" sudo snap remove android-studio
+            fi
+            sudo rm -rf "$ANDROID_STUDIO_DIR"
+            rm -f "$ANDROID_STUDIO_DESKTOP" "$ANDROID_STUDIO_STATE"
+            log_success "Android Studio quitado (su configuración queda en ~/.config/Google por si lo reinstalas)"
+        fi
+    fi
+    if [ -d "$ANDROID_SDK" ]; then
+        found=true
+        echo -e "${YELLOW}ℹ El SDK de Android ocupa $(du -sh "$ANDROID_SDK" 2>/dev/null | cut -f1) en $ANDROID_SDK (incluye los emuladores)${NC}"
+        if confirm "${RED}¿Borrar el SDK de Android? (tus proyectos y tus claves de firma en ~/.android no se tocan)${NC}"; then
+            [ "${NUCLEAR_ALL:-false}" = true ] || { [ -d "$HOME/.android" ] && make_backup android-claves "$HOME/.android"; }
+            rm -rf "$ANDROID_SDK" "$ANDROID_ENV"
+            sed -i "/$ANDROID_ENV_MARK\$/d" "$HOME/.bashrc" "$HOME/.profile" 2>/dev/null
+            log_success "SDK de Android borrado"
+            echo -e "${CYAN}ℹ El JDK y las reglas USB son paquetes: se quitan en 'Ver y quitar PROGRAMAS' (1)${NC}"
+        fi
+    fi
+    $found || echo -e "${YELLOW}ℹ No hay Android Studio ni SDK de Android instalados${NC}"
+}
+
+install_flatpak() {
+    if ! has_desktop; then
+        log_warning "Flatpak es para apps de escritorio (este sistema no tiene)"
+        return 1
+    fi
+    apt_update
+    local pkgs=(flatpak)
+    # Para ver e instalar Flatpaks desde la tienda del escritorio
+    case $DESKTOP in
+        kde) installed_pkgs plasma-discover | grep -qx plasma-discover && pkgs+=(plasma-discover-backend-flatpak) ;;
+        *) installed_pkgs gnome-software | grep -qx gnome-software && pkgs+=(gnome-software-plugin-flatpak) ;;
+    esac
+    apt_install_recorded "${pkgs[@]}" || return 1
+    run "No se pudo agregar Flathub" sudo flatpak remote-add --if-not-exists flathub \
+        https://dl.flathub.org/repo/flathub.flatpakrepo || return 1
+    log_success "Flatpak y Flathub listos (cierra sesión y vuelve a entrar para ver las apps en el menú)"
+    [ ${#pkgs[@]} -gt 1 ] && log_info "También puedes instalar Flatpaks desde la tienda de aplicaciones de tu escritorio"
+    return 0
+}
+
+# Última versión de un SDK de Flathub (las versiones con letras o "-" se ignoran)
+flatpak_latest_branch() {
+    flatpak remote-ls --system flathub --runtime --columns=application,branch 2>/dev/null \
+        | awk -v app="$1" '$1 == app {print $2}' | grep -E '^[0-9]+(\.[0-9]+)?$' | sort -V | tail -n1
+}
+
+install_flatpak_builder() {
+    command -v flatpak &> /dev/null && flatpak remotes 2>/dev/null | grep -qw flathub || install_flatpak || return 1
+    apt_install_recorded flatpak-builder || return 1
+    log_success "flatpak-builder instalado"
+
+    if $AUTO_MODE; then return 0; fi
+    echo -e "\n${BLUE}📦 ¿Para qué tipo de app vas a compilar? Cada SDK pesa entre 1 y 3 GB.${NC}"
+    echo -e "${CYAN}  Usa el que diga el manifiesto de tu app (runtime: / sdk:). Puedes elegir varios: 1 2${NC}"
+    echo -e "  ${BLUE}1)${NC} KDE / Qt         (org.kde.Sdk)"
+    echo -e "  ${BLUE}2)${NC} GNOME / GTK      (org.gnome.Sdk)"
+    echo -e "  ${BLUE}3)${NC} Básico           (org.freedesktop.Sdk: apps en C, C++, Rust, Python, juegos...)"
+    echo -e "  ${BLUE}0)${NC} Ninguno por ahora"
+    local choice c app branch refs=()
+    read -r -p "📌 Opción: " choice
+    for c in $choice; do
+        case $c in
+            1) app=org.kde ;;
+            2) app=org.gnome ;;
+            3) app=org.freedesktop ;;
+            *) continue ;;
+        esac
+        branch=$(flatpak_latest_branch "$app.Sdk")
+        if [ -z "$branch" ]; then
+            log_error "No se pudo consultar la versión de $app.Sdk en Flathub"
+            continue
+        fi
+        refs+=("$app.Sdk//$branch" "$app.Platform//$branch")
+    done
+    if [ ${#refs[@]} -gt 0 ]; then
+        echo -e "${BLUE}⬇ Instalando ${refs[*]}...${NC}"
+        if run_visible "No se pudieron instalar los SDK de Flatpak" \
+            sudo flatpak install -y --noninteractive --system flathub "${refs[@]}"; then
+            mkdir -p "$STATE_DIR"
+            printf '%s\n' "${refs[@]}" >> "$FLATPAK_SDK_LIST"
+            sort -u -o "$FLATPAK_SDK_LIST" "$FLATPAK_SDK_LIST"
+            log_success "SDK instalados: ${refs[*]}"
+        fi
+    fi
+    cat << 'GUIA'
+
+  📖 CÓMO COMPILAR UN FLATPAK (en la carpeta donde está el manifiesto .yml)
+     Probarlo en tu PC:
+       flatpak-builder --user --install --force-clean compilacion com.ejemplo.App.yml
+       flatpak run com.ejemplo.App
+     Crear un archivo .flatpak para compartir (se instala con doble clic):
+       flatpak-builder --repo=repo --force-clean compilacion com.ejemplo.App.yml
+       flatpak build-bundle repo mi-app.flatpak com.ejemplo.App
+GUIA
+}
+
+remove_flatpak_sdks() {
+    local refs=()
+    [ -f "$FLATPAK_SDK_LIST" ] && mapfile -t refs < "$FLATPAK_SDK_LIST"
+    if [ ${#refs[@]} -eq 0 ]; then
+        echo -e "${YELLOW}ℹ No hay SDK de Flatpak instalados por el script${NC}"
+        return 0
+    fi
+    printf "  ${RED}•${NC} %s\n" "${refs[@]}"
+    confirm "${RED}¿Quitar estos SDK de Flatpak?${NC}" || return 0
+    run "No se pudieron quitar los SDK" sudo flatpak uninstall -y --noninteractive --system "${refs[@]}"
+    sudo flatpak uninstall -y --noninteractive --system --unused >> "$LOG_FILE" 2>&1
+    rm -f "$FLATPAK_SDK_LIST"
+    log_success "SDK de Flatpak quitados (Flatpak y flatpak-builder se quitan en 'Ver y quitar PROGRAMAS')"
+}
+
+# ------------------------------------------------------------
+# Respaldos: antes de borrar algo que no se puede recuperar
+# ------------------------------------------------------------
+
+BACKUP_DIR="$HOME/respaldos-ubuntu-ultimate-tools"
+
+# Guarda carpetas en un .tar.gz con fecha (también las de root). Uso: make_backup nombre ruta...
+make_backup() {
+    local name="$1" file paths=() p
+    shift
+    for p in "$@"; do sudo test -e "$p" && paths+=("${p#/}"); done
+    [ ${#paths[@]} -gt 0 ] || return 0
+    mkdir -p "$BACKUP_DIR"
+    file="$BACKUP_DIR/$name-$(date +%Y%m%d-%H%M%S)"
+    # Nunca se pisa un respaldo anterior
+    [ -e "$file.tar.gz" ] && file="$file-$$-$RANDOM"
+    file="$file.tar.gz"
+    echo -e "${BLUE}💾 Guardando respaldo de: $*${NC}"
+    if sudo tar -czf "$file" -C / "${paths[@]}" 2>> "$LOG_FILE"; then
+        sudo chown "$(id -u):$(id -g)" "$file"
+        log_success "Respaldo guardado: $file ($(du -h "$file" | cut -f1))"
+        LAST_BACKUP="$file"
+        return 0
+    fi
+    sudo rm -f "$file"
+    log_error "No se pudo guardar el respaldo de $name"
+    return 1
+}
+
+# ------------------------------------------------------------
+# Docker: compilar con el Dockerfile de un proyecto (SDK, NDK... ya listos adentro)
+# ------------------------------------------------------------
+
+DOCKER_PKGS=(docker.io docker-buildx docker-compose-v2)
+
+docker_installed() { command -v docker &> /dev/null; }
+
+install_docker() {
+    echo -e "${BLUE}🐳 DOCKER - compilar con el Dockerfile de un proyecto${NC}"
+    echo -e "${CYAN}  Un Dockerfile es una receta: Docker arma un \"contenedor\" con todo lo que el proyecto${NC}"
+    echo -e "${CYAN}  necesita (SDK, NDK, versiones exactas...) sin instalarlo en tu sistema.${NC}"
+    echo -e "${CYAN}  Sirve también en un VPS sin escritorio.${NC}\n"
+
+    # Otras instalaciones de Docker chocan con la de Ubuntu
+    if [ -n "$(installed_pkgs docker-ce)" ]; then
+        log_info "Ya tienes Docker de docker.com (docker-ce): no se instala el de Ubuntu"
+    elif snap list docker &> /dev/null; then
+        log_error "Tienes Docker en snap: chocaría con el de Ubuntu. Quítalo antes con: sudo snap remove docker"
+        return 1
+    else
+        # Si había configuración de un Docker anterior, se respalda antes de tocar nada
+        sudo test -d /etc/docker && make_backup docker-config /etc/docker
+        apt_update
+        local pkgs=()
+        mapfile -t pkgs < <(available_pkgs "${DOCKER_PKGS[@]}")
+        if ! printf '%s\n' "${pkgs[@]}" | grep -qx docker.io; then
+            log_error "Tu Ubuntu no tiene el paquete docker.io"
+            return 1
+        fi
+        apt_install_recorded "${pkgs[@]}" || return 1
+    fi
+    run "No se pudo iniciar Docker" sudo systemctl enable --now docker.service docker.socket || return 1
+    log_success "Docker instalado y en marcha"
+
+    # Usar docker sin sudo: cómodo, pero ese grupo equivale a ser administrador
+    if ! id -nG | grep -qw docker; then
+        echo -e "\n${YELLOW}ℹ Para usar docker sin escribir sudo, tu usuario entra al grupo 'docker'.${NC}"
+        echo -e "${YELLOW}  Ojo: quien está en ese grupo tiene poder de administrador en la PC. En tu PC o${NC}"
+        echo -e "${YELLOW}  en tu VPS personal está bien; en un servidor compartido, mejor usar sudo docker.${NC}"
+        if confirm "${BLUE}¿Usar docker sin sudo?${NC}"; then
+            run "No se pudo agregar al grupo docker" sudo usermod -aG docker "$USER" \
+                && log_success "Listo (cierra sesión y vuelve a entrar, o en un VPS sal y vuelve a conectarte)"
+        fi
+    fi
+    cat << 'GUIA'
+
+  📖 COMPILAR UN PROYECTO QUE TRAE DOCKERFILE (por ejemplo, una app de Android)
+     cd carpeta-del-proyecto
+     docker build -t mi-compilador .                    → arma el contenedor (la 1.ª vez tarda)
+     docker run --rm -v "$PWD":/home/source mi-compilador → compila (la ruta /home/source
+                                                           la indica el README del proyecto)
+     El APK queda en la carpeta del proyecto, como si lo hubieras compilado sin Docker.
+
+  🔄 ACTUALIZAR: git pull y vuelve a ejecutar los 2 comandos.
+  🧹 LIBERAR ESPACIO: docker system df  (ver)  ·  docker system prune  (borrar lo que sobra)
+GUIA
+}
+
+# Tamaño ocupado por Docker (imágenes, contenedores, volúmenes)
+docker_usage() {
+    sudo docker system df 2>/dev/null | sed 's/^/   /'
+    sudo du -sh /var/lib/docker 2>/dev/null | awk '{print "   Total en disco: " $1}'
+}
+
+# Quitar Docker. Normal: los programas (imágenes y volúmenes se conservan).
+# Nuclear: además todos los datos, la configuración y el grupo, con respaldo antes.
+remove_docker() {
+    if ! docker_installed && ! sudo test -d /var/lib/docker; then
+        echo -e "${YELLOW}ℹ Docker no está instalado${NC}"
+        return 0
+    fi
+    echo -e "${RED}🐳 Quitar Docker${NC}\n"
+    docker_usage
+    echo ""
+    echo -e "  ${RED}1)${NC} Quitar los programas y CONSERVAR imágenes, contenedores y volúmenes"
+    echo -e "     (si lo reinstalas, todo vuelve a estar)"
+    echo -e "  ${RED}2)${NC} ☢️  ELIMINACIÓN NUCLEAR: programas + TODOS los datos + configuración + grupo"
+    echo -e "     (antes se guarda un respaldo de la configuración y, si quieres, de tus volúmenes)"
+    echo -e "  ${RED}0)${NC} 🔙 Volver sin cambiar nada"
+    local choice
+    read -r -p "📌 Opción (0-2): " choice
+    case $choice in
+        1) docker_remove_programs ;;
+        2) docker_nuclear ;;
+        *) echo -e "${YELLOW}ℹ No se cambió nada${NC}" ;;
+    esac
+}
+
+docker_remove_programs() {
+    local pkgs=()
+    mapfile -t pkgs < <(installed_pkgs "${DOCKER_PKGS[@]}" docker-ce docker-ce-cli containerd.io)
+    [ ${#pkgs[@]} -gt 0 ] || { echo -e "${YELLOW}ℹ No hay paquetes de Docker instalados${NC}"; return 0; }
+    confirm "${RED}¿Quitar ${pkgs[*]}? (los datos en /var/lib/docker se conservan)${NC}" || return 0
+    sudo systemctl stop docker.service docker.socket >> "$LOG_FILE" 2>&1
+    run "No se pudo quitar Docker" sudo env DEBIAN_FRONTEND=noninteractive apt-get remove "${APT_OPTS[@]}" "${pkgs[@]}" || return 1
+    forget_installed "${pkgs[@]}"
+    log_success "Docker quitado (tus imágenes y volúmenes siguen en /var/lib/docker)"
+}
+
+docker_nuclear() {
+    echo -e "\n${RED}${BOLD}⚠️  ELIMINACIÓN NUCLEAR DE DOCKER${NC}"
+    echo -e "${RED}  Se borran para siempre: todos los contenedores, imágenes, volúmenes y redes,${NC}"
+    echo -e "${RED}  /var/lib/docker, /var/lib/containerd, /etc/docker, ~/.docker y el grupo 'docker'.${NC}\n"
+    if [ "${NUCLEAR_ALL:-false}" != true ]; then
+        confirm "${RED}¿Seguro que quieres borrar Docker y TODOS sus datos?${NC}" || return 0
+        confirm "${RED}ÚLTIMA ADVERTENCIA: ¿confirmar la eliminación total?${NC}" || return 0
+    fi
+
+    # Respaldos: la configuración siempre (es chica); los volúmenes (tus datos), si quieres
+    make_backup docker-config /etc/docker "$HOME/.docker"
+    if sudo test -d /var/lib/docker/volumes && [ -n "$(sudo ls -A /var/lib/docker/volumes 2>/dev/null | grep -vx metadata.db)" ]; then
+        echo -e "${YELLOW}ℹ Tus volúmenes (datos de los contenedores) ocupan $(sudo du -sh /var/lib/docker/volumes | cut -f1)${NC}"
+        if confirm "${BLUE}¿Guardar un respaldo de los volúmenes antes de borrarlos?${NC}"; then
+            enough_space "$HOME" "$(( $(sudo du -s --block-size=1G /var/lib/docker/volumes | cut -f1) + 1 ))" \
+                && make_backup docker-volumes /var/lib/docker/volumes
+        fi
+    fi
+
+    echo -e "${RED}[1/4] Deteniendo y borrando contenedores...${NC}"
+    if docker_installed; then
+        sudo docker ps -aq 2>/dev/null | xargs -r sudo docker rm -f >> "$LOG_FILE" 2>&1
+    fi
+    sudo systemctl stop docker.service docker.socket containerd.service >> "$LOG_FILE" 2>&1
+
+    echo -e "${RED}[2/4] Quitando los programas...${NC}"
+    local pkgs=()
+    mapfile -t pkgs < <(installed_pkgs "${DOCKER_PKGS[@]}" docker-ce docker-ce-cli containerd.io \
+        docker-buildx-plugin docker-compose-plugin containerd runc)
+    if [ ${#pkgs[@]} -gt 0 ]; then
+        apt_purge "${pkgs[@]}"
+        forget_installed "${pkgs[@]}"
+        run "Falló la limpieza de dependencias" sudo env DEBIAN_FRONTEND=noninteractive apt-get "${APT_OPTS[@]}" autoremove --purge
+    fi
+
+    echo -e "${RED}[3/4] Borrando datos y configuración...${NC}"
+    sudo rm -rf /var/lib/docker /var/lib/containerd /etc/docker /run/docker.sock "$HOME/.docker"
+
+    echo -e "${RED}[4/4] Quitando el grupo docker...${NC}"
+    getent group docker > /dev/null && sudo groupdel docker >> "$LOG_FILE" 2>&1
+
+    log_success "Docker eliminado por completo"
+    [ -d "$BACKUP_DIR" ] && echo -e "${CYAN}💾 Respaldos en: $BACKUP_DIR${NC}"
+}
+
+# Todo lo de desarrollo que instala el script, de una vez
+dev_nuclear() {
+    echo -e "${RED}${BOLD}☢️  ELIMINACIÓN NUCLEAR DE LAS HERRAMIENTAS DE DESARROLLO${NC}\n"
+    echo -e "${RED}📋 Se borra:${NC}"
+    android_studio_installed && echo -e "  • Android Studio"
+    [ -d "$ANDROID_SDK" ] && echo -e "  • SDK de Android ($(du -sh "$ANDROID_SDK" 2>/dev/null | cut -f1), con emuladores y NDK)"
+    [ -s "$FLATPAK_SDK_LIST" ] && echo -e "  • SDK de Flatpak: $(paste -sd' ' "$FLATPAK_SDK_LIST")"
+    { docker_installed || sudo test -d /var/lib/docker; } && echo -e "  • Docker con TODAS sus imágenes, contenedores y volúmenes"
+    echo -e "  • Java (JDK), reglas USB de Android y flatpak-builder"
+    echo -e "\n${GREEN}✓ No se tocan: tus proyectos, tus claves de firma (~/.android) ni tus apps Flatpak.${NC}"
+    echo -e "${GREEN}  Antes se guardan respaldos en $BACKUP_DIR${NC}\n"
+    confirm "${RED}¿Borrar todo lo anterior?${NC}" || return 0
+    confirm "${RED}ÚLTIMA ADVERTENCIA: ¿confirmar la eliminación total?${NC}" || return 0
+
+    # Las claves de firma no se borran, pero un respaldo extra nunca sobra
+    [ -d "$HOME/.android" ] && make_backup android-claves "$HOME/.android"
+
+    local was_force=${FORCE_YES:-false}
+    if android_studio_installed || [ -d "$ANDROID_SDK" ]; then
+        FORCE_YES=true NUCLEAR_ALL=true remove_android
+    fi
+    [ -s "$FLATPAK_SDK_LIST" ] && FORCE_YES=true remove_flatpak_sdks
+    if docker_installed || sudo test -d /var/lib/docker; then
+        NUCLEAR_ALL=true docker_nuclear
+    fi
+    FORCE_YES=$was_force
+
+    local pkgs=()
+    mapfile -t pkgs < <(installed_pkgs openjdk-21-jdk-headless openjdk-17-jdk-headless \
+        android-sdk-platform-tools-common flatpak-builder)
+    if [ ${#pkgs[@]} -gt 0 ]; then
+        apt_purge "${pkgs[@]}" && forget_installed "${pkgs[@]}"
+        run "Falló la limpieza de dependencias" sudo env DEBIAN_FRONTEND=noninteractive apt-get "${APT_OPTS[@]}" autoremove --purge
+    fi
+    echo ""
+    log_success "Herramientas de desarrollo eliminadas"
+    [ -d "$BACKUP_DIR" ] && echo -e "${CYAN}💾 Respaldos en: $BACKUP_DIR${NC}"
+}
+
 # ============================================================
 # OPCIÓN 8: SOFTWARE OPCIONAL (COLOR: AZUL)
 # ============================================================
@@ -1878,6 +2514,11 @@ select_optional_software() {
         "obs-studio|🎥 OBS Studio"
         "emojier|😊 Selector de emojis"
         "qrca|📱 Generador de códigos QR"
+        "android-tools|🤖 Compilar APK: Java + SDK Android + adb (~3 GB)"
+        "android-studio|🤖 Android Studio con emulador (Google o Snap, ~10 GB)"
+        "flatpak|📦 Flatpak + Flathub: instalar apps Flatpak"
+        "flatpak-builder|🛠️ Compilar Flatpaks: flatpak-builder + el SDK que elijas"
+        "docker|🐳 Docker + Compose: compilar con el Dockerfile de un proyecto"
     )
 
     # Se marca lo que ya está instalado para no reinstalarlo por error
@@ -1885,6 +2526,9 @@ select_optional_software() {
     mapfile -t installed < <(installed_pkgs "${software[@]%%|*}" spotify-client kdeplasma-addons)
     steam_installed && installed+=(steam)
     [ -n "$(ls -d "$(steam_dir)"/compatibilitytools.d/GE-Proton* 2>/dev/null)" ] && installed+=(proton-ge)
+    android_tools_installed && installed+=(android-tools)
+    android_studio_installed && installed+=(android-studio)
+    docker_installed && installed+=(docker)
     for app in "${software[@]}"; do
         pkg=${app%%|*}
         case $pkg in
@@ -2006,7 +2650,7 @@ setup_spotify_repo() {
 # Discord) se descargan en paralelo mientras se actualiza la lista de paquetes.
 install_optional_with_progress() {
     local repo=() deb_names=() deb_urls=() pids=() debs=() failed=() app i
-    local repo_changed=false tmp want_steam=false want_ge=false
+    local repo_changed=false tmp want_steam=false want_ge=false want_extra=()
     tmp=$(mktemp -d)
     chmod 755 "$tmp"
 
@@ -2040,6 +2684,8 @@ install_optional_with_progress() {
             # Necesitan pasos propios (32 bits, verificación): se instalan al final
             "steam") want_steam=true ;;
             "proton-ge") want_ge=true ;;
+            # Descargas grandes con pasos propios: van al final, en este orden
+            "android-tools"|"android-studio"|"flatpak"|"flatpak-builder"|"docker") want_extra+=("$app") ;;
             *) repo+=("$app") ;;
         esac
     done
@@ -2101,6 +2747,13 @@ install_optional_with_progress() {
 
     if $want_steam; then install_steam || failed+=(steam); fi
     if $want_ge; then install_proton_ge || failed+=(proton-ge); fi
+    for app in android-tools android-studio flatpak flatpak-builder docker; do
+        [[ " ${want_extra[*]} " == *" $app "* ]] || continue
+        # flatpak-builder ya instala Flatpak si hace falta
+        [ "$app" = flatpak ] && [[ " ${want_extra[*]} " == *" flatpak-builder "* ]] && continue
+        echo ""
+        "install_${app//-/_}" || failed+=("$app")
+    done
 
     if [ ${#failed[@]} -gt 0 ]; then
         log_error "No se pudieron instalar: ${failed[*]}"
@@ -5428,7 +6081,7 @@ PROFILES=(
     "productividad|Oficina y uso diario: herramientas, RAM, DNS rápido, sin juegos"
     "gaming|Juegos: Steam + Proton, drivers, kernel Liquorix, GameMode, red de baja latencia"
     "ahorro|Ahorro de energía: TLP en portátiles, sin indexador, ZRAM"
-    "desarrollo|Programación: git, compiladores, Python, VSCode, ajustes para IDEs"
+    "desarrollo|Programación: git, compiladores, Python, VSCode, SDK de Android para APK"
     "minimalista|Mínimo: sin meta-paquete ni apps extra, sin Snap, Firefox .deb (y Plasma más nuevo en Kubuntu)"
 )
 
@@ -5478,6 +6131,7 @@ EOF
 Desactivar indexación de manuales (apt más rápido)|disable_mandb
 Actualizar el sistema|do_system_update
 Instalar herramientas (git, build-essential, Python, VSCode...)|install_optional_with_progress git curl wget vim htop build-essential python3-pip python3-venv code
+Herramientas para compilar APK (Java, SDK de Android, adb)|install_android_tools
 Más archivos vigilados para IDEs (inotify)|set_sysctl fs.inotify.max_user_watches 524288
 Optimizar RAM (swappiness y caché)|apply_ram_tweaks
 Activar ZRAM|enable_zram
@@ -5606,7 +6260,8 @@ profiles_menu() {
 # que Ubuntu ya trae (python3, curl, wget): quitarlos podría romper otras cosas.
 SCRIPT_PROGRAMS=(filezilla code virtualbox google-chrome-stable telegram-desktop python3-pip
     python3-venv git htop fastfetch timeshift gparted vim discord spotify-client obs-studio
-    qrca build-essential alacritty gamemode mangohud steam-launcher steam-installer tlp tlp-rdw zram-tools corectrl
+    qrca build-essential alacritty gamemode mangohud steam-launcher steam-installer flatpak flatpak-builder
+    openjdk-21-jdk-headless openjdk-17-jdk-headless android-sdk-platform-tools-common docker.io docker-buildx docker-compose-v2 tlp tlp-rdw zram-tools corectrl
     nvidia-cuda-toolkit grub-customizer boot-repair refind)
 
 remove_installed_programs() {
@@ -5803,10 +6458,15 @@ undo_menu() {
         echo -e "  ${RED}4)${NC} 🔋 Quitar TLP y volver al selector de energía del escritorio"
         echo -e "  ${RED}5)${NC} 📋 Ver qué AJUSTES están cambiados y restaurarlos todos (no toca programas)"
         echo -e "  ${RED}6)${NC} 🍷 Quitar Proton-GE"
+        echo -e "  ${RED}7)${NC} 🤖 Quitar Android Studio y/o el SDK de Android"
+        echo -e "  ${RED}8)${NC} 📦 Quitar los SDK de Flatpak (KDE, GNOME, Freedesktop)"
+        echo -e "  ${RED}9)${NC} 🐳 Quitar Docker (conservando tus datos, o eliminación nuclear)"
+        echo -e "  ${RED}10)${NC} ☢️  ELIMINACIÓN NUCLEAR de todo lo de desarrollo (Android, Flatpak SDK, Docker)"
+        echo -e "      con respaldos antes de borrar"
         echo -e "\n  ${RED}0)${NC} 🔙 Volver"
         echo -e "\n${YELLOW}ℹ Otros cambios se deshacen en su menú: kernel (4), distribución original (9),${NC}"
         echo -e "${YELLOW}  Snap (11), accesos directos (14), DNS/BBR/Wi-Fi (15), energía e indexador (16)${NC}\n"
-        read -r -p "📌 Opción (0-6): " undo_option
+        read -r -p "📌 Opción (0-10): " undo_option
 
         case $undo_option in
             1) remove_installed_programs ;;
@@ -5814,6 +6474,10 @@ undo_menu() {
             3) disable_zram ;;
             4) remove_tlp ;;
             6) remove_proton_ge ;;
+            7) remove_android ;;
+            8) remove_flatpak_sdks ;;
+            9) remove_docker ;;
+            10) dev_nuclear ;;
             5)
                 if ! show_tweaks_status; then
                     echo -e "${GREEN}✓ No hay ajustes cambiados: todo está como de fábrica${NC}"
