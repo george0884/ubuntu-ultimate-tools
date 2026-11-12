@@ -116,7 +116,7 @@ o desde la terminal:
 | `productividad` | Actualiza, quita juegos, instala git/htop/timeshift..., RAM + ZRAM, TRIM, DNS más rápido, TCP BBR |
 | `gaming` | **Steam + Proton** (activado para todos los juegos) y Proton-GE, drivers recomendados, kernel Liquorix, GameMode + MangoHud, energía al máximo, sin Baloo, Wi-Fi sin ahorro, BBR, DNS |
 | `ahorro` | TLP en portátiles (perfil de ahorro en PC), sin Baloo, ZRAM, RAM, TRIM |
-| `desarrollo` | git, build-essential, Python, VSCode, más vigilancia de archivos para IDEs, RAM, ZRAM, BBR, DNS |
+| `desarrollo` | git, build-essential, Python, VSCode, **SDK de Android para compilar APK**, más vigilancia de archivos para IDEs, RAM, ZRAM, BBR, DNS |
 | `minimalista` | Mínimo: sin el meta-paquete del sabor ni apps extra, sin Snap, Firefox .deb de Mozilla (en KDE, Plasma de backports) |
 
 - Si un paso falla, el perfil sigue con los demás y al final muestra un resumen ✓/✗.
@@ -381,8 +381,29 @@ desde la opción 18.
 | GParted | Editor de particiones | Ubuntu |
 | Vim | Editor de texto en la terminal | Ubuntu |
 | Selector de emojis y Qrca | Emojis y códigos QR (de KDE) | Ubuntu |
+| Compilar APK | Java (JDK) + SDK de Android + `adb`, sin Android Studio (~3 GB). Sirve también en un VPS sin escritorio | JDK y reglas USB de Ubuntu; SDK oficial de Google (descarga verificada) |
+| Android Studio | Programar apps de Android, con emulador (~10 GB). Comprueba la virtualización (KVM) para que el emulador sea rápido | Oficial de Google en `/opt` (verificado con SHA-256) **o** Snap, a elegir |
+| Flatpak + Flathub | Instalar apps Flatpak, también desde Discover o la tienda de GNOME | Ubuntu |
+| Compilar Flatpaks | `flatpak-builder` y el SDK que elijas: KDE, GNOME o Freedesktop | Ubuntu + Flathub |
 
 Lo que ya tienes instalado aparece marcado "(ya instalado)".
+
+### 🤖 Compilar APK
+
+Después de instalar las herramientas, en una terminal nueva:
+
+```bash
+cd mi-proyecto
+./gradlew assembleDebug              # APK de prueba: app/build/outputs/apk/debug/
+./gradlew tasks                      # proyectos con variantes: lista qué se puede compilar
+```
+
+- **NDK y CMake** (proyectos con C/C++): Gradle baja solo la versión exacta que pide el proyecto,
+  porque el script ya aceptó las licencias del SDK.
+- **Actualizar**: vuelve a usar la opción 8 → Compilar APK y se actualiza el SDK.
+- **Quitar**: opción 18 → 7 (Android Studio y SDK; tus claves de firma en `~/.android` no se tocan)
+  y 18 → 8 (SDK de Flatpak).
+- El perfil `desarrollo` también instala las herramientas para compilar APK.
 
 ---
 
