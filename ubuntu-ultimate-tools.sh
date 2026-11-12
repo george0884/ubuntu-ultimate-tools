@@ -84,6 +84,10 @@ pause() {
 confirm() {
     local prompt="$1"
     local response
+    if [ "${FORCE_YES:-false}" = true ]; then
+        echo -e "$prompt ${YELLOW}→ sí (ya confirmado)${NC}"
+        return 0
+    fi
     if $AUTO_MODE; then
         echo -e "$prompt ${YELLOW}→ no (modo automático)${NC}"
         return 1
@@ -2160,6 +2164,7 @@ remove_android() {
         found=true
         echo -e "${YELLOW}ℹ El SDK de Android ocupa $(du -sh "$ANDROID_SDK" 2>/dev/null | cut -f1) en $ANDROID_SDK (incluye los emuladores)${NC}"
         if confirm "${RED}¿Borrar el SDK de Android? (tus proyectos y tus claves de firma en ~/.android no se tocan)${NC}"; then
+            [ "${NUCLEAR_ALL:-false}" = true ] || { [ -d "$HOME/.android" ] && make_backup android-claves "$HOME/.android"; }
             rm -rf "$ANDROID_SDK" "$ANDROID_ENV"
             sed -i "/$ANDROID_ENV_MARK\$/d" "$HOME/.bashrc" "$HOME/.profile" 2>/dev/null
             log_success "SDK de Android borrado"
@@ -2260,6 +2265,219 @@ remove_flatpak_sdks() {
     log_success "SDK de Flatpak quitados (Flatpak y flatpak-builder se quitan en 'Ver y quitar PROGRAMAS')"
 }
 
+# ------------------------------------------------------------
+# Respaldos: antes de borrar algo que no se puede recuperar
+# ------------------------------------------------------------
+
+BACKUP_DIR="$HOME/respaldos-ubuntu-ultimate-tools"
+
+# Guarda carpetas en un .tar.gz con fecha (también las de root). Uso: make_backup nombre ruta...
+make_backup() {
+    local name="$1" file paths=() p
+    shift
+    for p in "$@"; do sudo test -e "$p" && paths+=("${p#/}"); done
+    [ ${#paths[@]} -gt 0 ] || return 0
+    mkdir -p "$BACKUP_DIR"
+    file="$BACKUP_DIR/$name-$(date +%Y%m%d-%H%M%S)"
+    # Nunca se pisa un respaldo anterior
+    [ -e "$file.tar.gz" ] && file="$file-$$-$RANDOM"
+    file="$file.tar.gz"
+    echo -e "${BLUE}💾 Guardando respaldo de: $*${NC}"
+    if sudo tar -czf "$file" -C / "${paths[@]}" 2>> "$LOG_FILE"; then
+        sudo chown "$(id -u):$(id -g)" "$file"
+        log_success "Respaldo guardado: $file ($(du -h "$file" | cut -f1))"
+        LAST_BACKUP="$file"
+        return 0
+    fi
+    sudo rm -f "$file"
+    log_error "No se pudo guardar el respaldo de $name"
+    return 1
+}
+
+# ------------------------------------------------------------
+# Docker: compilar con el Dockerfile de un proyecto (SDK, NDK... ya listos adentro)
+# ------------------------------------------------------------
+
+DOCKER_PKGS=(docker.io docker-buildx docker-compose-v2)
+
+docker_installed() { command -v docker &> /dev/null; }
+
+install_docker() {
+    echo -e "${BLUE}🐳 DOCKER - compilar con el Dockerfile de un proyecto${NC}"
+    echo -e "${CYAN}  Un Dockerfile es una receta: Docker arma un \"contenedor\" con todo lo que el proyecto${NC}"
+    echo -e "${CYAN}  necesita (SDK, NDK, versiones exactas...) sin instalarlo en tu sistema.${NC}"
+    echo -e "${CYAN}  Sirve también en un VPS sin escritorio.${NC}\n"
+
+    # Otras instalaciones de Docker chocan con la de Ubuntu
+    if [ -n "$(installed_pkgs docker-ce)" ]; then
+        log_info "Ya tienes Docker de docker.com (docker-ce): no se instala el de Ubuntu"
+    elif snap list docker &> /dev/null; then
+        log_error "Tienes Docker en snap: chocaría con el de Ubuntu. Quítalo antes con: sudo snap remove docker"
+        return 1
+    else
+        # Si había configuración de un Docker anterior, se respalda antes de tocar nada
+        sudo test -d /etc/docker && make_backup docker-config /etc/docker
+        apt_update
+        local pkgs=()
+        mapfile -t pkgs < <(available_pkgs "${DOCKER_PKGS[@]}")
+        if ! printf '%s\n' "${pkgs[@]}" | grep -qx docker.io; then
+            log_error "Tu Ubuntu no tiene el paquete docker.io"
+            return 1
+        fi
+        apt_install_recorded "${pkgs[@]}" || return 1
+    fi
+    run "No se pudo iniciar Docker" sudo systemctl enable --now docker.service docker.socket || return 1
+    log_success "Docker instalado y en marcha"
+
+    # Usar docker sin sudo: cómodo, pero ese grupo equivale a ser administrador
+    if ! id -nG | grep -qw docker; then
+        echo -e "\n${YELLOW}ℹ Para usar docker sin escribir sudo, tu usuario entra al grupo 'docker'.${NC}"
+        echo -e "${YELLOW}  Ojo: quien está en ese grupo tiene poder de administrador en la PC. En tu PC o${NC}"
+        echo -e "${YELLOW}  en tu VPS personal está bien; en un servidor compartido, mejor usar sudo docker.${NC}"
+        if confirm "${BLUE}¿Usar docker sin sudo?${NC}"; then
+            run "No se pudo agregar al grupo docker" sudo usermod -aG docker "$USER" \
+                && log_success "Listo (cierra sesión y vuelve a entrar, o en un VPS sal y vuelve a conectarte)"
+        fi
+    fi
+    cat << 'GUIA'
+
+  📖 COMPILAR UN PROYECTO QUE TRAE DOCKERFILE (por ejemplo, una app de Android)
+     cd carpeta-del-proyecto
+     docker build -t mi-compilador .                    → arma el contenedor (la 1.ª vez tarda)
+     docker run --rm -v "$PWD":/home/source mi-compilador → compila (la ruta /home/source
+                                                           la indica el README del proyecto)
+     El APK queda en la carpeta del proyecto, como si lo hubieras compilado sin Docker.
+
+  🔄 ACTUALIZAR: git pull y vuelve a ejecutar los 2 comandos.
+  🧹 LIBERAR ESPACIO: docker system df  (ver)  ·  docker system prune  (borrar lo que sobra)
+GUIA
+}
+
+# Tamaño ocupado por Docker (imágenes, contenedores, volúmenes)
+docker_usage() {
+    sudo docker system df 2>/dev/null | sed 's/^/   /'
+    sudo du -sh /var/lib/docker 2>/dev/null | awk '{print "   Total en disco: " $1}'
+}
+
+# Quitar Docker. Normal: los programas (imágenes y volúmenes se conservan).
+# Nuclear: además todos los datos, la configuración y el grupo, con respaldo antes.
+remove_docker() {
+    if ! docker_installed && ! sudo test -d /var/lib/docker; then
+        echo -e "${YELLOW}ℹ Docker no está instalado${NC}"
+        return 0
+    fi
+    echo -e "${RED}🐳 Quitar Docker${NC}\n"
+    docker_usage
+    echo ""
+    echo -e "  ${RED}1)${NC} Quitar los programas y CONSERVAR imágenes, contenedores y volúmenes"
+    echo -e "     (si lo reinstalas, todo vuelve a estar)"
+    echo -e "  ${RED}2)${NC} ☢️  ELIMINACIÓN NUCLEAR: programas + TODOS los datos + configuración + grupo"
+    echo -e "     (antes se guarda un respaldo de la configuración y, si quieres, de tus volúmenes)"
+    echo -e "  ${RED}0)${NC} 🔙 Volver sin cambiar nada"
+    local choice
+    read -r -p "📌 Opción (0-2): " choice
+    case $choice in
+        1) docker_remove_programs ;;
+        2) docker_nuclear ;;
+        *) echo -e "${YELLOW}ℹ No se cambió nada${NC}" ;;
+    esac
+}
+
+docker_remove_programs() {
+    local pkgs=()
+    mapfile -t pkgs < <(installed_pkgs "${DOCKER_PKGS[@]}" docker-ce docker-ce-cli containerd.io)
+    [ ${#pkgs[@]} -gt 0 ] || { echo -e "${YELLOW}ℹ No hay paquetes de Docker instalados${NC}"; return 0; }
+    confirm "${RED}¿Quitar ${pkgs[*]}? (los datos en /var/lib/docker se conservan)${NC}" || return 0
+    sudo systemctl stop docker.service docker.socket >> "$LOG_FILE" 2>&1
+    run "No se pudo quitar Docker" sudo env DEBIAN_FRONTEND=noninteractive apt-get remove "${APT_OPTS[@]}" "${pkgs[@]}" || return 1
+    forget_installed "${pkgs[@]}"
+    log_success "Docker quitado (tus imágenes y volúmenes siguen en /var/lib/docker)"
+}
+
+docker_nuclear() {
+    echo -e "\n${RED}${BOLD}⚠️  ELIMINACIÓN NUCLEAR DE DOCKER${NC}"
+    echo -e "${RED}  Se borran para siempre: todos los contenedores, imágenes, volúmenes y redes,${NC}"
+    echo -e "${RED}  /var/lib/docker, /var/lib/containerd, /etc/docker, ~/.docker y el grupo 'docker'.${NC}\n"
+    if [ "${NUCLEAR_ALL:-false}" != true ]; then
+        confirm "${RED}¿Seguro que quieres borrar Docker y TODOS sus datos?${NC}" || return 0
+        confirm "${RED}ÚLTIMA ADVERTENCIA: ¿confirmar la eliminación total?${NC}" || return 0
+    fi
+
+    # Respaldos: la configuración siempre (es chica); los volúmenes (tus datos), si quieres
+    make_backup docker-config /etc/docker "$HOME/.docker"
+    if sudo test -d /var/lib/docker/volumes && [ -n "$(sudo ls -A /var/lib/docker/volumes 2>/dev/null | grep -vx metadata.db)" ]; then
+        echo -e "${YELLOW}ℹ Tus volúmenes (datos de los contenedores) ocupan $(sudo du -sh /var/lib/docker/volumes | cut -f1)${NC}"
+        if confirm "${BLUE}¿Guardar un respaldo de los volúmenes antes de borrarlos?${NC}"; then
+            enough_space "$HOME" "$(( $(sudo du -s --block-size=1G /var/lib/docker/volumes | cut -f1) + 1 ))" \
+                && make_backup docker-volumes /var/lib/docker/volumes
+        fi
+    fi
+
+    echo -e "${RED}[1/4] Deteniendo y borrando contenedores...${NC}"
+    if docker_installed; then
+        sudo docker ps -aq 2>/dev/null | xargs -r sudo docker rm -f >> "$LOG_FILE" 2>&1
+    fi
+    sudo systemctl stop docker.service docker.socket containerd.service >> "$LOG_FILE" 2>&1
+
+    echo -e "${RED}[2/4] Quitando los programas...${NC}"
+    local pkgs=()
+    mapfile -t pkgs < <(installed_pkgs "${DOCKER_PKGS[@]}" docker-ce docker-ce-cli containerd.io \
+        docker-buildx-plugin docker-compose-plugin containerd runc)
+    if [ ${#pkgs[@]} -gt 0 ]; then
+        apt_purge "${pkgs[@]}"
+        forget_installed "${pkgs[@]}"
+        run "Falló la limpieza de dependencias" sudo env DEBIAN_FRONTEND=noninteractive apt-get "${APT_OPTS[@]}" autoremove --purge
+    fi
+
+    echo -e "${RED}[3/4] Borrando datos y configuración...${NC}"
+    sudo rm -rf /var/lib/docker /var/lib/containerd /etc/docker /run/docker.sock "$HOME/.docker"
+
+    echo -e "${RED}[4/4] Quitando el grupo docker...${NC}"
+    getent group docker > /dev/null && sudo groupdel docker >> "$LOG_FILE" 2>&1
+
+    log_success "Docker eliminado por completo"
+    [ -d "$BACKUP_DIR" ] && echo -e "${CYAN}💾 Respaldos en: $BACKUP_DIR${NC}"
+}
+
+# Todo lo de desarrollo que instala el script, de una vez
+dev_nuclear() {
+    echo -e "${RED}${BOLD}☢️  ELIMINACIÓN NUCLEAR DE LAS HERRAMIENTAS DE DESARROLLO${NC}\n"
+    echo -e "${RED}📋 Se borra:${NC}"
+    android_studio_installed && echo -e "  • Android Studio"
+    [ -d "$ANDROID_SDK" ] && echo -e "  • SDK de Android ($(du -sh "$ANDROID_SDK" 2>/dev/null | cut -f1), con emuladores y NDK)"
+    [ -s "$FLATPAK_SDK_LIST" ] && echo -e "  • SDK de Flatpak: $(paste -sd' ' "$FLATPAK_SDK_LIST")"
+    { docker_installed || sudo test -d /var/lib/docker; } && echo -e "  • Docker con TODAS sus imágenes, contenedores y volúmenes"
+    echo -e "  • Java (JDK), reglas USB de Android y flatpak-builder"
+    echo -e "\n${GREEN}✓ No se tocan: tus proyectos, tus claves de firma (~/.android) ni tus apps Flatpak.${NC}"
+    echo -e "${GREEN}  Antes se guardan respaldos en $BACKUP_DIR${NC}\n"
+    confirm "${RED}¿Borrar todo lo anterior?${NC}" || return 0
+    confirm "${RED}ÚLTIMA ADVERTENCIA: ¿confirmar la eliminación total?${NC}" || return 0
+
+    # Las claves de firma no se borran, pero un respaldo extra nunca sobra
+    [ -d "$HOME/.android" ] && make_backup android-claves "$HOME/.android"
+
+    local was_force=${FORCE_YES:-false}
+    if android_studio_installed || [ -d "$ANDROID_SDK" ]; then
+        FORCE_YES=true NUCLEAR_ALL=true remove_android
+    fi
+    [ -s "$FLATPAK_SDK_LIST" ] && FORCE_YES=true remove_flatpak_sdks
+    if docker_installed || sudo test -d /var/lib/docker; then
+        NUCLEAR_ALL=true docker_nuclear
+    fi
+    FORCE_YES=$was_force
+
+    local pkgs=()
+    mapfile -t pkgs < <(installed_pkgs openjdk-21-jdk-headless openjdk-17-jdk-headless \
+        android-sdk-platform-tools-common flatpak-builder)
+    if [ ${#pkgs[@]} -gt 0 ]; then
+        apt_purge "${pkgs[@]}" && forget_installed "${pkgs[@]}"
+        run "Falló la limpieza de dependencias" sudo env DEBIAN_FRONTEND=noninteractive apt-get "${APT_OPTS[@]}" autoremove --purge
+    fi
+    echo ""
+    log_success "Herramientas de desarrollo eliminadas"
+    [ -d "$BACKUP_DIR" ] && echo -e "${CYAN}💾 Respaldos en: $BACKUP_DIR${NC}"
+}
+
 # ============================================================
 # OPCIÓN 8: SOFTWARE OPCIONAL (COLOR: AZUL)
 # ============================================================
@@ -2300,6 +2518,7 @@ select_optional_software() {
         "android-studio|🤖 Android Studio con emulador (Google o Snap, ~10 GB)"
         "flatpak|📦 Flatpak + Flathub: instalar apps Flatpak"
         "flatpak-builder|🛠️ Compilar Flatpaks: flatpak-builder + el SDK que elijas"
+        "docker|🐳 Docker + Compose: compilar con el Dockerfile de un proyecto"
     )
 
     # Se marca lo que ya está instalado para no reinstalarlo por error
@@ -2309,6 +2528,7 @@ select_optional_software() {
     [ -n "$(ls -d "$(steam_dir)"/compatibilitytools.d/GE-Proton* 2>/dev/null)" ] && installed+=(proton-ge)
     android_tools_installed && installed+=(android-tools)
     android_studio_installed && installed+=(android-studio)
+    docker_installed && installed+=(docker)
     for app in "${software[@]}"; do
         pkg=${app%%|*}
         case $pkg in
@@ -2465,7 +2685,7 @@ install_optional_with_progress() {
             "steam") want_steam=true ;;
             "proton-ge") want_ge=true ;;
             # Descargas grandes con pasos propios: van al final, en este orden
-            "android-tools"|"android-studio"|"flatpak"|"flatpak-builder") want_extra+=("$app") ;;
+            "android-tools"|"android-studio"|"flatpak"|"flatpak-builder"|"docker") want_extra+=("$app") ;;
             *) repo+=("$app") ;;
         esac
     done
@@ -2527,7 +2747,7 @@ install_optional_with_progress() {
 
     if $want_steam; then install_steam || failed+=(steam); fi
     if $want_ge; then install_proton_ge || failed+=(proton-ge); fi
-    for app in android-tools android-studio flatpak flatpak-builder; do
+    for app in android-tools android-studio flatpak flatpak-builder docker; do
         [[ " ${want_extra[*]} " == *" $app "* ]] || continue
         # flatpak-builder ya instala Flatpak si hace falta
         [ "$app" = flatpak ] && [[ " ${want_extra[*]} " == *" flatpak-builder "* ]] && continue
@@ -6041,7 +6261,7 @@ profiles_menu() {
 SCRIPT_PROGRAMS=(filezilla code virtualbox google-chrome-stable telegram-desktop python3-pip
     python3-venv git htop fastfetch timeshift gparted vim discord spotify-client obs-studio
     qrca build-essential alacritty gamemode mangohud steam-launcher steam-installer flatpak flatpak-builder
-    openjdk-21-jdk-headless openjdk-17-jdk-headless android-sdk-platform-tools-common tlp tlp-rdw zram-tools corectrl
+    openjdk-21-jdk-headless openjdk-17-jdk-headless android-sdk-platform-tools-common docker.io docker-buildx docker-compose-v2 tlp tlp-rdw zram-tools corectrl
     nvidia-cuda-toolkit grub-customizer boot-repair refind)
 
 remove_installed_programs() {
@@ -6240,10 +6460,13 @@ undo_menu() {
         echo -e "  ${RED}6)${NC} 🍷 Quitar Proton-GE"
         echo -e "  ${RED}7)${NC} 🤖 Quitar Android Studio y/o el SDK de Android"
         echo -e "  ${RED}8)${NC} 📦 Quitar los SDK de Flatpak (KDE, GNOME, Freedesktop)"
+        echo -e "  ${RED}9)${NC} 🐳 Quitar Docker (conservando tus datos, o eliminación nuclear)"
+        echo -e "  ${RED}10)${NC} ☢️  ELIMINACIÓN NUCLEAR de todo lo de desarrollo (Android, Flatpak SDK, Docker)"
+        echo -e "      con respaldos antes de borrar"
         echo -e "\n  ${RED}0)${NC} 🔙 Volver"
         echo -e "\n${YELLOW}ℹ Otros cambios se deshacen en su menú: kernel (4), distribución original (9),${NC}"
         echo -e "${YELLOW}  Snap (11), accesos directos (14), DNS/BBR/Wi-Fi (15), energía e indexador (16)${NC}\n"
-        read -r -p "📌 Opción (0-8): " undo_option
+        read -r -p "📌 Opción (0-10): " undo_option
 
         case $undo_option in
             1) remove_installed_programs ;;
@@ -6253,6 +6476,8 @@ undo_menu() {
             6) remove_proton_ge ;;
             7) remove_android ;;
             8) remove_flatpak_sdks ;;
+            9) remove_docker ;;
+            10) dev_nuclear ;;
             5)
                 if ! show_tweaks_status; then
                     echo -e "${GREEN}✓ No hay ajustes cambiados: todo está como de fábrica${NC}"
