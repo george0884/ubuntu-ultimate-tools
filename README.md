@@ -50,7 +50,7 @@ sin importar el sabor. Al iniciar **detecta qué sabor y qué escritorio tienes*
 | **Ubuntu Server** | sin escritorio | Kernel, GRUB, red, RAM, Snap y actualizaciones |
 
 El sabor se detecta por su meta-paquete (`kubuntu-desktop`, `xubuntu-desktop`...). Si lo quitaste con la
-opción 2, se reconoce por su escritorio. Las opciones que no aplican a tu escritorio lo explican y no hacen nada.
+opción 11, se reconoce por su escritorio. Las opciones que no aplican a tu escritorio lo explican y no hacen nada.
 
 ---
 
@@ -159,11 +159,11 @@ Shift derecho + F12 oculta el panel · Shift izquierdo + F2 pausa/reanuda la gra
 - **Proton-GE**: la última versión se descarga de la página oficial del proyecto, se comprueba que llegó
   entera (suma SHA-512) y se instala en `compatibilitytools.d`. Se elige por juego en
   *Propiedades → Compatibilidad*. Funciona también con Steam de Flatpak.
-- Se quitan desde la opción 18: Steam en "Quitar programas" y Proton-GE en "Quitar Proton-GE".
+- Se quitan desde la opción 9: Steam en "Quitar programas" y Proton-GE en "Quitar Proton-GE".
 
 ---
 
-## 🔧 Arranque: reparar y personalizar GRUB/EFI (opción 12)
+## 🔧 Arranque: reparar y personalizar GRUB/EFI (opción 18)
 
 Todo lo hace el propio script, sin instalar programas externos.
 
@@ -192,7 +192,7 @@ ejecuta `<script>_ubuntu_ultimate_tools`, que lo llama y quita las entradas de l
 (sin entradas duplicadas) hasta que se vuelva a usar la opción. No se pueden ocultar todas las
 entradas de tu sistema.
 
-Si usaste **Grub Customizer**, la opción 9 → 7 deja `/etc/grub.d` como lo instala Ubuntu: devuelve
+Si usaste **Grub Customizer**, la opción 18 → 9 → 7 deja `/etc/grub.d` como lo instala Ubuntu: devuelve
 cada script a su nombre, quita sus `*_proxy` (que duplican entradas) y guarda antes una copia
 completa en `/etc/grub.d.antes-de-deshacer-grub-customizer-<fecha>`.
 
@@ -206,9 +206,9 @@ La reparación automática desde Live USB:
 
 #### Prepárate antes de necesitarlo
 
-Con el sistema funcionando, usa la opción 12 → 14 y la 12 → 15. Son tres pasos:
+Con el sistema funcionando, usa la opción 18 → 14 y la 18 → 15. Son tres pasos:
 
-1. **Tarjeta de rescate (12 → 14).** Calcula los comandos exactos para tu PC: el nombre que GRUB le da a
+1. **Tarjeta de rescate (18 → 14).** Calcula los comandos exactos para tu PC: el nombre que GRUB le da a
    tu partición (por ejemplo `(hd0,gpt2)`), su UUID y las rutas del kernel. Funciona con ext4, btrfs y
    `/boot` en partición aparte.
    - **Sácale una foto con el celular**: cuando aparece `grub>` no puedes abrir archivos de tu disco.
@@ -217,7 +217,7 @@ Con el sistema funcionando, usa la opción 12 → 14 y la 12 → 15. Son tres pa
    - Se actualiza sola cada vez que el script cambia GRUB.
 2. **Pendrive.** En esa misma opción, el script copia **la tarjeta y el propio script** al pendrive que
    elijas. Como el repositorio es privado, desde un Live USB no se podría descargar sin iniciar sesión.
-3. **Arranque de respaldo UEFI (12 → 15).** El firmware guarda una lista de sistemas para arrancar, y
+3. **Arranque de respaldo UEFI (18 → 15).** El firmware guarda una lista de sistemas para arrancar, y
    a veces la pierde: al actualizar la BIOS, por un reseteo o al cambiar el disco de PC. Entonces la PC
    no arranca o va directo a Windows, aunque Ubuntu esté bien.
    - El script copia el arranque de Ubuntu a la ruta de emergencia `EFI/BOOT/BOOTX64.EFI`, la que el
@@ -226,7 +226,7 @@ Con el sistema funcionando, usa la opción 12 → 14 y la 12 → 15. Son tres pa
    - Funciona con Secure Boot y se mantiene al día con cada actualización (un hook de apt).
    - Si esa ruta la usa Windows, no se toca. Si la usaba otro sistema, se guarda una copia y al
      quitarlo vuelve como estaba.
-   - La reparación completa (12 → 3) también lo ofrece.
+   - La reparación completa (18 → 3) también lo ofrece.
 
 Ten a mano también un **USB de instalación de tu sabor de Ubuntu** (el Live USB).
 
@@ -241,7 +241,7 @@ Ten a mano también un **USB de instalación de tu sabor de Ubuntu** (el Live US
 
 ```bash
 cd /media/$USER/PENDRIVE
-bash ubuntu-ultimate-tools.sh      # opción 12 → 10
+bash ubuntu-ultimate-tools.sh      # opción 18 → 10
 ```
 
 - Se usa `bash ubuntu-ultimate-tools.sh` y no `./ubuntu-ultimate-tools.sh` porque los pendrives FAT32/exFAT
@@ -254,14 +254,14 @@ bash ubuntu-ultimate-tools.sh      # opción 12 → 10
 
 ## ☑️ Selección con barra espaciadora
 
-En "Eliminar aplicaciones" (opción 1) y "Software opcional" (opción 8) las listas usan casillas:
+En "Eliminar aplicaciones" (opción 3) y "Software opcional" (opción 6) las listas usan casillas:
 **Espacio** marca o desmarca, **flechas** para moverse, **Enter** para aceptar. La lista de eliminación
 solo muestra las apps instaladas, y la de software marca las que ya tienes. Si `whiptail` no está
 disponible, se vuelve a la selección escribiendo números.
 
 ---
 
-## ↩️ Deshacer optimizaciones (opción 18)
+## ↩️ Deshacer optimizaciones (opción 9)
 
 - **Quitar programas instalados por el script**, con casillas. El script anota en
   `~/.local/share/ubuntu-ultimate-tools/paquetes-instalados.txt` solo los programas que **no tenías antes**;
@@ -276,7 +276,7 @@ disponible, se vuelve a la selección escribiendo números.
   flatpak-builder de una vez, con doble confirmación y respaldos antes. Tus proyectos, tus claves de firma y
   tus apps Flatpak no se tocan.
 - **Restaurar todos los ajustes** de una vez, sin desinstalar programas. "Revertir a
-  distribución original" (opción 9) también lo hace.
+  distribución original" (opción 10) también lo hace.
 
 ---
 
@@ -284,7 +284,7 @@ En todos los menús y submenús, **0** vuelve al menú anterior (en el principal
 
 ---
 
-## 🖥️ Información del sistema y hardware (opción 19)
+## 🖥️ Información del sistema y hardware (opción 2)
 
 | | Opción | Qué muestra |
 |---|---|---|
@@ -312,11 +312,11 @@ En todos los menús y submenús, **0** vuelve al menú anterior (en el principal
 - Los `.deb` externos (VSCode, Chrome, Discord) se descargan en paralelo.
 - `apt update` se ejecuta una vez por sesión (o se omite si el sistema lo hizo hace menos de 30 minutos).
 - Cambiar de kernel no regenera GRUB: se usa `GRUB_DEFAULT=saved` + `grub-set-default`.
-- La opción 2 permite desactivar la indexación de manuales (`man-db`), lo más lento de cada instalación.
+- La opción 11 permite desactivar la indexación de manuales (`man-db`), lo más lento de cada instalación.
 
 ---
 
-## ⚡ Cambio de kernel
+## ⚡ Cambio de kernel (opción 13)
 
 | Opción | Kernel | Notas |
 |--------|--------|-------|
@@ -340,12 +340,12 @@ Dentro de la opción 3:
 
 ---
 
-## ↩️ Revertir a distribución original (opción 9)
+## ↩️ Revertir a distribución original (opción 10)
 
 Deja tu Ubuntu como vino de fábrica, sea cual sea el sabor (muestra cuál detectó antes de empezar):
 
 - Reinstala el meta-paquete de tu sabor **con todas sus aplicaciones** (`kubuntu-desktop`, `xubuntu-desktop`,
-  `ubuntu-desktop-minimal`...). Si lo quitaste con la opción 2, recuerda cuál era: un Ubuntu mínimo no se
+  `ubuntu-desktop-minimal`...). Si lo quitaste con la opción 11, recuerda cuál era: un Ubuntu mínimo no se
   convierte en uno completo.
 - Reinstala todo lo que el script eliminó (incluidas dependencias); la lista está en
   `~/.local/share/ubuntu-ultimate-tools/paquetes-eliminados.txt`.
@@ -358,12 +358,12 @@ Deja tu Ubuntu como vino de fábrica, sea cual sea el sabor (muestra cuál detec
 - Vuelve a fábrica todos los ajustes (RAM, DNS, ZRAM, energía, indexador...).
 - En Ubuntu Server hace lo que aplica: paquetes, Snap y ajustes.
 
-No cambia el kernel (opción 4) ni el arranque (opción 12). Los programas que instaló el script se quitan
-desde la opción 18.
+No cambia el kernel (opción 13) ni el arranque (opción 18). Los programas que instaló el script se quitan
+desde la opción 9.
 
 ---
 
-## 📦 Software opcional (opción 8)
+## 📦 Software opcional (opción 6)
 
 | Programa | Para qué sirve | Origen |
 |----------|----------------|--------|
@@ -406,9 +406,9 @@ cd mi-proyecto
 
 - **NDK y CMake** (proyectos con C/C++): Gradle baja solo la versión exacta que pide el proyecto,
   porque el script ya aceptó las licencias del SDK.
-- **Actualizar**: vuelve a usar la opción 8 → Compilar APK y se actualiza el SDK.
-- **Quitar**: opción 18 → 7 (Android Studio y SDK; tus claves de firma en `~/.android` no se tocan)
-  y 18 → 8 (SDK de Flatpak).
+- **Actualizar**: vuelve a usar la opción 6 → Compilar APK y se actualiza el SDK.
+- **Quitar**: opción 9 → 7 (Android Studio y SDK; tus claves de firma en `~/.android` no se tocan)
+  y 9 → 8 (SDK de Flatpak).
 
 ### 🐳 Compilar con Docker
 
@@ -424,7 +424,7 @@ docker run --rm -v "$PWD":/home/source mi-compilador  # la ruta la indica el REA
 - Para usar `docker` sin `sudo`, el script ofrece sumar tu usuario al grupo `docker` (avisa que ese grupo
   equivale a ser administrador).
 - Si había configuración de un Docker anterior, se guarda un respaldo antes de instalar.
-- **Quitar** (opción 18 → 9): solo los programas, conservando imágenes y volúmenes; o la **eliminación
+- **Quitar** (opción 9 → 9): solo los programas, conservando imágenes y volúmenes; o la **eliminación
   nuclear**, que borra todo (datos, configuración y grupo) después de guardar un respaldo de la
   configuración y, si quieres, de tus volúmenes.
 
@@ -437,7 +437,7 @@ Android (`~/.android`). Nunca se pisa un respaldo anterior.
 
 ---
 
-## 🗑️ Aplicaciones que puedes eliminar (opción 1)
+## 🗑️ Aplicaciones que puedes eliminar (opción 3)
 
 La lista sale de los **meta-paquetes reales de cada sabor**, con dos filtros:
 
@@ -463,13 +463,13 @@ graph LR
     E --> F[Reiniciar]
 ```
 
-Si algo no te convence, la opción 18 deshace optimizaciones y quita programas, y la 9 vuelve a la distribución original.
+Si algo no te convence, la opción 9 deshace optimizaciones y quita programas, y la 10 vuelve a la distribución original.
 
 ---
 
 ## 🛡️ Seguridad
 
-- ✅ **Reversible**: cada ajuste se puede deshacer (opción 18) y todo se puede revertir (opción 9).
+- ✅ **Reversible**: cada ajuste se puede deshacer (opción 9) y todo se puede revertir (opción 10).
 - ✅ **Confirmaciones**: cada acción importante pide confirmación y muestra qué se va a cambiar.
 - ✅ **Seguro de dependencias**: nunca quita una app que arrastre piezas esenciales del sistema.
 - ✅ **Copias antes de tocar el arranque**: `/etc/default/grub` se guarda antes del primer cambio, y `/etc/grub.d` entero antes de deshacer Grub Customizer.
@@ -499,7 +499,7 @@ Firefox y la tienda Snap se eliminarán. En Ubuntu `apt install firefox` solo in
 
 **¿Cómo vuelvo atrás?**
 
-Para quitar ajustes o programas sueltos, usa la opción 18. Para volver del todo, la opción 9: reinstala el meta-paquete de tu sabor con todas sus apps y restaura Snap.
+Para quitar ajustes o programas sueltos, usa la opción 9. Para volver del todo, la opción 10: reinstala el meta-paquete de tu sabor con todas sus apps y restaura Snap.
 
 **¿Usaba la versión anterior, "Kubuntu Lite"?**
 
