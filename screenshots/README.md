@@ -13,96 +13,96 @@ sabor y el escritorio detectados, y las listas muestran solo lo que está instal
 
 ---
 
-## Eliminar aplicaciones (opción 2) — lista con casillas
+## Información del sistema y hardware (opción 2)
 
-![Eliminar aplicaciones (opción 2) — lista con casillas](02-eliminar-apps.png)
-
----
-
-## Optimizar GPU (opción 4)
-
-![Optimizar GPU (opción 4)](03-gpu.png)
+![Información del sistema y hardware (opción 2)](14-informacion-sistema.png)
 
 ---
 
-## Optimizar kernel (opción 5)
+## Resumen rápido del sistema (opción 2 → 1)
 
-![Optimizar kernel (opción 5)](04-kernel.png)
-
----
-
-## Arranque: reparar y personalizar GRUB/EFI (opción 12)
-
-![Arranque: reparar y personalizar GRUB/EFI (opción 12)](05-arranque-grub.png)
+![Resumen rápido del sistema (opción 2 → 1)](15-resumen-sistema.png)
 
 ---
 
-## Tarjeta de rescate de tu PC (opción 12 → 14)
+## Eliminar aplicaciones (opción 3) — lista con casillas
 
-![Tarjeta de rescate de tu PC (opción 12 → 14)](17-tarjeta-rescate.png)
-
----
-
-## Personalizar el menú de GRUB (opción 12 → 9)
-
-![Personalizar el menú de GRUB (opción 12 → 9)](06-personalizar-grub.png)
+![Eliminar aplicaciones (opción 3) — lista con casillas](02-eliminar-apps.png)
 
 ---
 
-## Ocultar entradas del menú de GRUB (opción 12 → 9 → 1)
+## Quitar accesos directos (opción 5)
 
-![Ocultar entradas del menú de GRUB (opción 12 → 9 → 1)](07-ocultar-entradas-grub.png)
-
----
-
-## Instalar software opcional (opción 8) — lista con casillas
-
-![Instalar software opcional (opción 8) — lista con casillas](08-software-opcional.png)
+![Quitar accesos directos (opción 5)](09-accesos-directos.png)
 
 ---
 
-## Revertir a distribución original (opción 9)
+## Instalar software opcional (opción 6) — lista con casillas
 
-![Revertir a distribución original (opción 9)](16-revertir.png)
-
----
-
-## Quitar accesos directos (opción 13)
-
-![Quitar accesos directos (opción 13)](09-accesos-directos.png)
+![Instalar software opcional (opción 6) — lista con casillas](08-software-opcional.png)
 
 ---
 
-## Red, DNS y drivers (opción 14)
+## Deshacer optimizaciones (opción 9)
 
-![Red, DNS y drivers (opción 14)](10-red-dns-drivers.png)
-
----
-
-## Energía y rendimiento (opción 15)
-
-![Energía y rendimiento (opción 15)](11-energia.png)
+![Deshacer optimizaciones (opción 9)](13-deshacer.png)
 
 ---
 
-## Perfiles automáticos (opción 16)
+## Revertir a distribución original (opción 10)
 
-![Perfiles automáticos (opción 16)](12-perfiles.png)
-
----
-
-## Deshacer optimizaciones (opción 17)
-
-![Deshacer optimizaciones (opción 17)](13-deshacer.png)
+![Revertir a distribución original (opción 10)](16-revertir.png)
 
 ---
 
-## Información del sistema y hardware (opción 18)
+## Optimizar GPU (opción 12)
 
-![Información del sistema y hardware (opción 18)](14-informacion-sistema.png)
+![Optimizar GPU (opción 12)](03-gpu.png)
 
 ---
 
-## Resumen rápido del sistema (opción 18 → 1)
+## Optimizar kernel (opción 13)
 
-![Resumen rápido del sistema (opción 18 → 1)](15-resumen-sistema.png)
+![Optimizar kernel (opción 13)](04-kernel.png)
+
+---
+
+## Red, DNS y drivers (opción 15)
+
+![Red, DNS y drivers (opción 15)](10-red-dns-drivers.png)
+
+---
+
+## Energía y rendimiento (opción 16)
+
+![Energía y rendimiento (opción 16)](11-energia.png)
+
+---
+
+## Perfiles automáticos (opción 17)
+
+![Perfiles automáticos (opción 17)](12-perfiles.png)
+
+---
+
+## Arranque: reparar y personalizar GRUB/EFI (opción 18)
+
+![Arranque: reparar y personalizar GRUB/EFI (opción 18)](05-arranque-grub.png)
+
+---
+
+## Personalizar el menú de GRUB (opción 18 → 9)
+
+![Personalizar el menú de GRUB (opción 18 → 9)](06-personalizar-grub.png)
+
+---
+
+## Ocultar entradas del menú de GRUB (opción 18 → 9 → 1)
+
+![Ocultar entradas del menú de GRUB (opción 18 → 9 → 1)](07-ocultar-entradas-grub.png)
+
+---
+
+## Tarjeta de rescate de tu PC (opción 18 → 14)
+
+![Tarjeta de rescate de tu PC (opción 18 → 14)](17-tarjeta-rescate.png)

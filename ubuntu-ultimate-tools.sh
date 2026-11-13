@@ -155,7 +155,7 @@ apt_install() { run "No se pudo instalar: $*" sudo env DEBIAN_FRONTEND=nonintera
 apt_purge() { run "No se pudo eliminar: $*" sudo env DEBIAN_FRONTEND=noninteractive apt-get purge "${APT_OPTS[@]}" "$@"; }
 
 # Instala y anota en INSTALLED_LIST los paquetes que NO estaban instalados antes,
-# para poder quitarlos después desde "Deshacer optimizaciones" (opción 17).
+# para poder quitarlos después desde "Deshacer optimizaciones" (opción 9).
 # Acepta nombres de paquete y rutas a archivos .deb.
 apt_install_recorded() {
     local new=() arg name
@@ -334,14 +334,14 @@ FLAVORS=(
     "ubuntu|Ubuntu|ubuntu-desktop-minimal|gnome|GNOME|gnome-shell"
 )
 
-# Detecta el sabor por su meta-paquete o, si se quitó (opción 3), por su escritorio
+# Detecta el sabor por su meta-paquete o, si se quitó (opción 11), por su escritorio
 detect_flavor() {
     local entry meta marker found=""
     for entry in "${FLAVORS[@]}"; do
         IFS='|' read -r _ _ meta _ _ marker <<< "$entry"
         if installed_pkgs "$meta" | grep -qx -- "$meta"; then found=$entry; break; fi
     done
-    # Si se quitó con la opción 3, queda anotado: así un Ubuntu mínimo no se confunde con el completo
+    # Si se quitó con la opción 11, queda anotado: así un Ubuntu mínimo no se confunde con el completo
     if [ -z "$found" ] && [ -s "$REMOVED_LIST" ]; then
         for entry in "${FLAVORS[@]}"; do
             IFS='|' read -r _ _ meta _ _ _ <<< "$entry"
@@ -649,14 +649,14 @@ CORE_PKGS=(plasma-desktop plasma-workspace kwin-x11 kwin-wayland systemsettings 
     sudo systemd policykit-1 polkitd ubuntu-minimal ubuntu-standard grub-common linux-generic)
 
 # ============================================================
-# OPCIÓN 2: ELIMINAR APLICACIONES (COLOR: CIAN)
+# OPCIÓN 3: ELIMINAR APLICACIONES (COLOR: CIAN)
 # ============================================================
 
 select_apps_to_remove() {
     clear
     echo -e "${CYAN}${BOLD}"
     echo "╔══════════════════════════════════════════════════════════════════╗"
-    echo "║                    🗑️ ELIMINAR APLICACIONES                       ║"
+    echo "║                    🚮 ELIMINAR APLICACIONES                      ║"
     echo "╚══════════════════════════════════════════════════════════════════╝"
     echo -e "${NC}"
 
@@ -705,7 +705,7 @@ select_apps_to_remove() {
 }
 
 # ============================================================
-# OPCIÓN 3: CONFIGURAR SISTEMA (COLOR: VERDE)
+# OPCIÓN 11: CONFIGURAR SISTEMA (COLOR: VERDE)
 # ============================================================
 
 remove_flavor_meta() {
@@ -753,7 +753,7 @@ configure_system() {
     clear
     echo -e "${GREEN}${BOLD}"
     echo "╔══════════════════════════════════════════════════════════════════╗"
-    echo "║                    ⚙️ CONFIGURAR SISTEMA                          ║"
+    echo "║                    🔩 CONFIGURAR SISTEMA                         ║"
     echo "╚══════════════════════════════════════════════════════════════════╝"
     echo -e "${NC}"
 
@@ -802,7 +802,7 @@ configure_system() {
 }
 
 # ============================================================
-# OPCIÓN 4: OPTIMIZACIÓN DE GPU (COLOR: MAGENTA)
+# OPCIÓN 12: OPTIMIZACIÓN DE GPU (COLOR: MAGENTA)
 # ============================================================
 
 optimize_gpu_menu() {
@@ -840,7 +840,7 @@ optimize_nvidia() {
     clear
     echo -e "${PURPLE}${BOLD}"
     echo "╔══════════════════════════════════════════════════════════════════╗"
-    echo "║                    🟢 OPTIMIZACIÓN NVIDIA                         ║"
+    echo "║                    🟢 OPTIMIZACIÓN NVIDIA                        ║"
     echo "╚══════════════════════════════════════════════════════════════════╝"
     echo -e "${NC}\n"
 
@@ -927,7 +927,7 @@ auto_detect_gpu() {
 }
 
 # ============================================================
-# OPCIÓN 5: OPTIMIZACIÓN DE KERNEL (COLOR: AZUL)
+# OPCIÓN 13: OPTIMIZACIÓN DE KERNEL (COLOR: AZUL)
 # ============================================================
 
 optimize_kernel_menu() {
@@ -935,7 +935,7 @@ optimize_kernel_menu() {
         clear
         echo -e "${BLUE}${BOLD}"
         echo "╔══════════════════════════════════════════════════════════════════╗"
-        echo "║                    ⚡ OPTIMIZACIÓN DEL KERNEL                     ║"
+        echo "║                    🐧 OPTIMIZACIÓN DEL KERNEL                    ║"
         echo "╚══════════════════════════════════════════════════════════════════╝"
         echo -e "${NC}"
 
@@ -1185,7 +1185,7 @@ install_liquorix_kernel() {
     clear
     echo -e "${BLUE}${BOLD}"
     echo "╔══════════════════════════════════════════════════════════════════╗"
-    echo "║                    ⚡ KERNEL LIQUORIX                             ║"
+    echo "║                    🐧 KERNEL LIQUORIX                            ║"
     echo "╚══════════════════════════════════════════════════════════════════╝"
     echo -e "${NC}\n"
 
@@ -1452,7 +1452,7 @@ optimize_standard_kernel() {
     clear
     echo -e "${BLUE}${BOLD}"
     echo "╔══════════════════════════════════════════════════════════════════╗"
-    echo "║                    ⚙️ KERNEL OFICIAL UBUNTU                      ║"
+    echo "║                    🐧 KERNEL OFICIAL UBUNTU                      ║"
     echo "╚══════════════════════════════════════════════════════════════════╝"
     echo -e "${NC}\n"
 
@@ -1473,7 +1473,7 @@ install_standard_livepatch_kernel() {
     clear
     echo -e "${BLUE}${BOLD}"
     echo "╔══════════════════════════════════════════════════════════════════╗"
-    echo "║                    🛡️ KERNEL CON LIVEPATCH                       ║"
+    echo "║                    🔰 KERNEL CON LIVEPATCH                       ║"
     echo "╚══════════════════════════════════════════════════════════════════╝"
     echo -e "${NC}\n"
 
@@ -1481,7 +1481,7 @@ install_standard_livepatch_kernel() {
         log_warning "Livepatch solo funciona en versiones LTS de Ubuntu"
     fi
     if ! command -v snap &> /dev/null; then
-        log_warning "Livepatch necesita Snap; reinstálalo con la opción 11 del menú principal"
+        log_warning "Livepatch necesita Snap; reinstálalo con la opción 8 del menú principal"
     fi
 
     # Livepatch solo da soporte a los kernels oficiales LTS (GA) y HWE
@@ -1554,7 +1554,7 @@ advanced_kernel_tweaks() {
 }
 
 # ============================================================
-# OPCIÓN 6: OPTIMIZACIÓN DE MEMORIA RAM (COLOR: AMARILLO)
+# OPCIÓN 14: OPTIMIZACIÓN DE MEMORIA RAM (COLOR: AMARILLO)
 # ============================================================
 
 apply_ram_tweaks() {
@@ -1770,7 +1770,7 @@ install_tokyo_night_theme() {
     else
         echo -e "${CYAN}ℹ En Konsole: Configuración → Gestionar perfiles → Tokyo Night${NC}"
     fi
-    echo -e "${CYAN}ℹ Para volver a los colores originales: opción 9 (Revertir) o Preferencias del sistema → Colores${NC}"
+    echo -e "${CYAN}ℹ Para volver a los colores originales: opción 10 (Revertir) o Preferencias del sistema → Colores${NC}"
 }
 
 # Modo oscuro de GNOME: estilo oscuro y, con el tema Yaru de Ubuntu, su variante oscura
@@ -1795,7 +1795,7 @@ install_custom_software() {
     clear
     echo -e "${CYAN}${BOLD}"
     echo "╔══════════════════════════════════════════════════════════════════╗"
-    echo "║                    🖥️ ALACRITTY Y TEMA TOKYO NIGHT               ║"
+    echo "║                    💻 ALACRITTY Y TEMA TOKYO NIGHT               ║"
     echo "╚══════════════════════════════════════════════════════════════════╝"
     echo -e "${NC}"
 
@@ -2109,7 +2109,7 @@ DESKTOP
 
 install_android_studio_snap() {
     if ! command -v snap &> /dev/null || [ -f /etc/apt/preferences.d/nosnap.pref ]; then
-        log_error "Snap no está instalado en este sistema (opción 11 para reinstalarlo, o usa la versión de Google)"
+        log_error "Snap no está instalado en este sistema (opción 8 para reinstalarlo, o usa la versión de Google)"
         return 1
     fi
     echo -e "${BLUE}⬇ Instalando el snap de Android Studio (más de 1 GB)...${NC}"
@@ -2369,10 +2369,10 @@ remove_docker() {
     echo -e "${RED}🐳 Quitar Docker${NC}\n"
     docker_usage
     echo ""
-    echo -e "  ${RED}1)${NC} Quitar los programas y CONSERVAR imágenes, contenedores y volúmenes"
-    echo -e "     (si lo reinstalas, todo vuelve a estar)"
-    echo -e "  ${RED}2)${NC} ☢️  ELIMINACIÓN NUCLEAR: programas + TODOS los datos + configuración + grupo"
-    echo -e "     (antes se guarda un respaldo de la configuración y, si quieres, de tus volúmenes)"
+    echo -e "  ${RED}1)${NC} 📦 Quitar los programas y CONSERVAR imágenes, contenedores y volúmenes"
+    echo -e "        (si lo reinstalas, todo vuelve a estar)"
+    echo -e "  ${RED}2)${NC} 💥 ELIMINACIÓN NUCLEAR: programas + TODOS los datos + configuración + grupo"
+    echo -e "        (antes se guarda un respaldo de la configuración y, si quieres, de tus volúmenes)"
     echo -e "  ${RED}0)${NC} 🔙 Volver sin cambiar nada"
     local choice
     read -r -p "📌 Opción (0-2): " choice
@@ -2479,7 +2479,7 @@ dev_nuclear() {
 }
 
 # ============================================================
-# OPCIÓN 8: SOFTWARE OPCIONAL (COLOR: AZUL)
+# OPCIÓN 6: SOFTWARE OPCIONAL (COLOR: AZUL)
 # ============================================================
 
 select_optional_software() {
@@ -2634,7 +2634,7 @@ remove_apps_with_progress() {
     fi
 
     echo -e "${CYAN}══════════════════════════════════════════════════════════════════${NC}"
-    $AUTO_MODE || echo -e "${CYAN}ℹ Para quitar los íconos del escritorio o del panel usa la opción 13${NC}"
+    $AUTO_MODE || echo -e "${CYAN}ℹ Para quitar los íconos del escritorio o del panel usa la opción 5${NC}"
     echo ""
 }
 
@@ -2762,7 +2762,7 @@ install_optional_with_progress() {
 }
 
 # ============================================================
-# OPCIÓN 9: REVERTIR CAMBIOS (COLOR: ROJO)
+# OPCIÓN 10: REVERTIR CAMBIOS (COLOR: ROJO)
 # ============================================================
 
 # Vuelve a las versiones de los repositorios oficiales los paquetes que vinieron
@@ -2872,7 +2872,7 @@ revert_changes() {
     clear
     echo -e "${RED}${BOLD}"
     echo "╔══════════════════════════════════════════════════════════════════╗"
-    echo "║                ↩️ REVERTIR A DISTRIBUCIÓN ORIGINAL               ║"
+    echo "║                ⏪ REVERTIR A DISTRIBUCIÓN ORIGINAL               ║"
     echo "╚══════════════════════════════════════════════════════════════════╝"
     echo -e "${NC}"
     echo -e "${CYAN}🐧 Distribución detectada: ${FLAVOR_NAME} (${DESKTOP_NAME})${NC}"
@@ -2895,8 +2895,8 @@ revert_changes() {
         echo -e "  • Restaurar el tema del escritorio (si el script lo cambió)"
     fi
     echo -e "  • Volver a los valores de fábrica los ajustes del script (RAM, DNS, ZRAM, energía...)"
-    echo -e "\n${YELLOW}ℹ No cambia el kernel (opción 5) ni el arranque (opción 12). Los programas que instaló${NC}"
-    echo -e "${YELLOW}  el script se quitan desde la opción 17.${NC}"
+    echo -e "\n${YELLOW}ℹ No cambia el kernel (opción 13) ni el arranque (opción 18). Los programas que instaló${NC}"
+    echo -e "${YELLOW}  el script se quitan desde la opción 9.${NC}"
     echo ""
 
     if ! confirm "${RED}⚠ ¿Revertir a la distribución original (${FLAVOR_NAME})?${NC}"; then
@@ -2917,7 +2917,7 @@ revert_changes() {
     fi
 
     echo -e "${RED}[2/6] Desbloqueando Snap...${NC}"
-    # La eliminación nuclear (opción 10) bloquea snapd; hay que desbloquearlo antes
+    # La eliminación nuclear (opción 4) bloquea snapd; hay que desbloquearlo antes
     sudo apt-mark unhold snapd >> "$LOG_FILE" 2>&1
     sudo rm -f /etc/apt/preferences.d/nosnap.pref
     if $mozilla && ! $keep_firefox; then
@@ -2965,7 +2965,7 @@ revert_changes() {
 }
 
 # ============================================================
-# OPCIÓN 10: ELIMINACIÓN NUCLEAR DE SNAP (COLOR: ROJO)
+# OPCIÓN 4: ELIMINACIÓN NUCLEAR DE SNAP (COLOR: ROJO)
 # ============================================================
 
 # Copia los perfiles de Firefox/Thunderbird del snap a la ubicación de la versión .deb
@@ -2995,7 +2995,7 @@ record_removed_snaps() {
     sort -u -o "$REMOVED_SNAPS" "$REMOVED_SNAPS"
 }
 
-# Reinstala las apps snap que quitó la eliminación nuclear (opción 10 o perfil minimalista).
+# Reinstala las apps snap que quitó la eliminación nuclear (opción 4 o perfil minimalista).
 # Los argumentos son snaps que no se reinstalan (p. ej. firefox si se queda el de Mozilla).
 restore_removed_snaps() {
     local name mode failed=() wanted=() skip=" $* "
@@ -3121,7 +3121,7 @@ nuclear_snap_removal() {
     clear
     echo -e "${RED}${BOLD}"
     echo "╔══════════════════════════════════════════════════════════════════╗"
-    echo "║                    ☢️ ELIMINACIÓN NUCLEAR DE SNAP                ║"
+    echo "║                    💥 ELIMINACIÓN NUCLEAR DE SNAP                ║"
     echo "╚══════════════════════════════════════════════════════════════════╝"
     echo -e "${NC}"
 
@@ -3153,12 +3153,12 @@ nuclear_snap_removal() {
     fi
     echo ""
     echo -e "${GREEN}✓ ¡ELIMINACIÓN NUCLEAR DE SNAP COMPLETADA!${NC}"
-    echo -e "${YELLOW}⚠ Snap ha sido borrado y bloqueado (la opción 11 permite reinstalarlo)${NC}"
+    echo -e "${YELLOW}⚠ Snap ha sido borrado y bloqueado (la opción 8 permite reinstalarlo)${NC}"
     pause
 }
 
 # ============================================================
-# OPCIÓN 11: REINSTALAR SNAP (COLOR: VERDE)
+# OPCIÓN 8: REINSTALAR SNAP (COLOR: VERDE)
 # ============================================================
 
 reinstall_snap() {
@@ -3213,7 +3213,7 @@ reinstall_snap() {
 }
 
 # ============================================================
-# OPCIÓN 12: REPARAR GRUB (COLOR: MAGENTA)
+# OPCIÓN 18: REPARAR GRUB (COLOR: MAGENTA)
 # ============================================================
 
 grub_repair_menu() {
@@ -3245,9 +3245,9 @@ grub_repair_menu() {
         echo -e "  ${PURPLE}13)${NC} 📖 GUÍA LIVE USB - Reparación manual con comandos"
         echo -e "\n${PURPLE}🛟 Prepárate ANTES de que falle (con el sistema funcionando):${NC}"
         echo -e "  ${PURPLE}14)${NC} 🪪 TARJETA DE RESCATE - Los comandos exactos de TU PC para 'grub>' y"
-        echo -e "        'grub rescue>', para fotografiar y copiar al pendrive junto con el script"
+        echo -e "         'grub rescue>', para fotografiar y copiar al pendrive junto con el script"
         echo -e "  ${PURPLE}15)${NC} 🛟 ARRANQUE DE RESPALDO UEFI - Que la PC arranque aunque la BIOS"
-        echo -e "        pierda la entrada de Ubuntu (actualización de BIOS, reseteo...)"
+        echo -e "         pierda la entrada de Ubuntu (actualización de BIOS, reseteo...)"
         echo -e "\n  ${PURPLE} 0)${NC} 🔙 Volver al menú principal"
         echo ""
         read -r -p "📌 Opción (0-15): " grub_option
@@ -3415,7 +3415,11 @@ grub_guide_header() {
     clear
     echo -e "${PURPLE}${BOLD}"
     echo "╔══════════════════════════════════════════════════════════════════╗"
-    printf "║                    %-46s║\n" "$1"
+    # Relleno según el ancho en pantalla: cada título empieza con un emoji, que ocupa 2 columnas
+    local LC_ALL=C.UTF-8   # para contar letras y no bytes, sea cual sea el idioma del sistema
+    local pad=$(( 46 - ${#1} - 1 ))
+    [ "$pad" -lt 0 ] && pad=0
+    printf "║                    %s%*s║\n" "$1" "$pad" ""
     echo "╚══════════════════════════════════════════════════════════════════╝"
     echo -e "${NC}"
 }
@@ -3488,14 +3492,14 @@ CAMINO MANUAL: BUSCAR LA PARTICIÓN A MANO
        linux /vmlinuz ...  e  initrd /initrd.img
 
 PASO FINAL: YA DENTRO DEL SISTEMA (repararlo de forma permanente)
-  Ejecuta este script → opción 12 → 2 (REPARACIÓN RÁPIDA) o → 3 (COMPLETA).
+  Ejecuta este script → opción 18 → 2 (REPARACIÓN RÁPIDA) o → 3 (COMPLETA).
 EOF
     echo -e "\n${YELLOW}📌 Presiona Enter para volver...${NC}"
     read -r
 }
 
 grub_rescue_guide() {
-    grub_guide_header "🛡️ GUÍA PARA 'grub rescue>'"
+    grub_guide_header "🆘 GUÍA PARA 'grub rescue>'"
     echo -e "${BOLD}grub rescue>${NC} significa que GRUB arrancó pero no encuentra ni sus propios"
     echo -e "archivos. Es un modo muy limitado: solo existen ${BOLD}ls${NC}, ${BOLD}set${NC} e ${BOLD}insmod${NC}"
     echo -e "(no puede buscar solo). Hay que decirle dónde está su carpeta.\n"
@@ -3520,7 +3524,7 @@ PASO 3: CARGAR GRUB (cambia hd0,gpt2 y la ruta por las que encontraste)
   Aparece el menú de siempre (o "grub>": entonces sigue la guía 11).
 
 PASO 4: YA DENTRO DEL SISTEMA
-  Ejecuta este script → opción 12 → 2 (REPARACIÓN RÁPIDA) o → 3 (COMPLETA).
+  Ejecuta este script → opción 18 → 2 (REPARACIÓN RÁPIDA) o → 3 (COMPLETA).
 
 SI "insmod normal" FALLA
   Los archivos de GRUB están dañados: arranca desde un USB de Ubuntu (de tu sabor)
@@ -3820,7 +3824,7 @@ grub_menu_entries() {
 }
 
 grub_default_entry_menu() {
-    grub_guide_header "🗂️ SISTEMA POR DEFECTO Y TIEMPO DEL MENÚ"
+    grub_guide_header "📂 SISTEMA POR DEFECTO Y TIEMPO DEL MENÚ"
     local entries=() entry i=0 choice timeout
     mapfile -t entries < <(grub_menu_entries)
     if [ ${#entries[@]} -eq 0 ]; then
@@ -4026,7 +4030,7 @@ regen_grub() {
     tail -8 <<< "$out" | sed 's/^/   /'
     if [ -d /etc/grub.d/proxifiedScripts ]; then
         echo -e "${YELLOW}⚠ Grub Customizer cambió los scripts de /etc/grub.d: suele ser la causa de este error.${NC}"
-        echo -e "${YELLOW}  Deshazlo en: opción 12 → 9 (Personalizar menú) → 7${NC}"
+        echo -e "${YELLOW}  Deshazlo en: opción 18 → 9 (Personalizar menú) → 7${NC}"
     fi
     return $rc
 }
@@ -4557,7 +4561,7 @@ uefi_ubuntu_first() {
 }
 
 grub_full_repair() {
-    grub_guide_header "🛠️ REPARACIÓN COMPLETA DEL ARRANQUE"
+    grub_guide_header "🧰 REPARACIÓN COMPLETA DEL ARRANQUE"
     local uefi=false disk step=0 total=4 failed=()
     [ -d /sys/firmware/efi ] && { uefi=true; total=7; }
 
@@ -4729,7 +4733,7 @@ rescue_card_text() {
     if $rc_crypt; then
         echo " ATENCIÓN: /boot está en un disco cifrado. Desde 'grub>' o"
         echo " 'grub rescue>' no se puede arrancar a mano: usa un Live USB y"
-        echo " este script, opción 12 -> 10 (reparación automática)."
+        echo " este script, opción 18 -> 10 (reparación automática)."
         echo ""
     else
         echo "----------------------------------------------------------------"
@@ -4771,14 +4775,14 @@ rescue_card_text() {
     echo "----------------------------------------------------------------"
     echo " C) CUANDO VUELVAS A ENTRAR AL SISTEMA"
     echo "----------------------------------------------------------------"
-    echo " Arréglalo de forma permanente: este script, opción 12 -> 2"
-    echo " (reparación rápida) o 12 -> 3 (reparación completa)."
+    echo " Arréglalo de forma permanente: este script, opción 18 -> 2"
+    echo " (reparación rápida) o 18 -> 3 (reparación completa)."
     echo ""
     echo "----------------------------------------------------------------"
     echo " D) SI NADA DE ESTO FUNCIONA"
     echo "----------------------------------------------------------------"
     echo " Arranca con un USB de instalación de Ubuntu ('Probar Ubuntu'),"
-    echo " abre este script desde el pendrive y usa la opción 12 -> 10."
+    echo " abre este script desde el pendrive y usa la opción 18 -> 10."
     echo "    bash /media/\$USER/<pendrive>/ubuntu-ultimate-tools.sh"
     echo "================================================================"
 }
@@ -4826,7 +4830,7 @@ rescue_copy_to_usb() {
     if cp "$RESCUE_CARD" "$dir/" 2>> "$LOG_FILE" && cp "$SCRIPT_PATH" "$dir/ubuntu-ultimate-tools.sh" 2>> "$LOG_FILE"; then
         sync
         log_success "Copiados en $dir: el script y la tarjeta de rescate"
-        echo -e "${CYAN}ℹ Desde el Live USB: bash /media/\$USER/$(basename "$dir")/ubuntu-ultimate-tools.sh → 12 → 10${NC}"
+        echo -e "${CYAN}ℹ Desde el Live USB: bash /media/\$USER/$(basename "$dir")/ubuntu-ultimate-tools.sh → 18 → 10${NC}"
     else
         log_error "No se pudo copiar al pendrive (¿está lleno o protegido contra escritura?)"
     fi
@@ -4959,7 +4963,7 @@ install_uefi_fallback() {
             log_warning "La ruta de respaldo la usa Windows: no se toca (Windows dejaría de arrancar por esa vía)"
             echo -e "${YELLOW}  Si algún día la PC va directo a Windows sin mostrar GRUB: entra al menú de arranque${NC}"
             echo -e "${YELLOW}  del BIOS (F12, F11, F8 o Esc al encender, según la marca), elige ubuntu y luego${NC}"
-            echo -e "${YELLOW}  usa este script → 12 → 8 para ponerlo primero.${NC}"
+            echo -e "${YELLOW}  usa este script → 18 → 8 para ponerlo primero.${NC}"
             return 0 ;;
         otro)
             echo -e "${YELLOW}⚠ La ruta de respaldo ya tiene el arranque de otro sistema (otra distro o un programa).${NC}"
@@ -5094,7 +5098,7 @@ shutdown_menu() {
 }
 
 # ============================================================
-# OPCIÓN 13: QUITAR ACCESOS DIRECTOS (COLOR: CIAN)
+# OPCIÓN 5: QUITAR ACCESOS DIRECTOS (COLOR: CIAN)
 # ============================================================
 
 PLASMA_APPLETSRC="$HOME/.config/plasma-org.kde.plasma.desktop-appletsrc"
@@ -5332,7 +5336,7 @@ remove_shortcuts_menu() {
 }
 
 # ============================================================
-# OPCIÓN 14: RED, DNS Y DRIVERS (COLOR: AZUL)
+# OPCIÓN 15: RED, DNS Y DRIVERS (COLOR: AZUL)
 # ============================================================
 
 RESOLVED_DNS_CONF="/etc/systemd/resolved.conf.d/99-ubuntu-ultimate-tools-dns.conf"
@@ -5587,7 +5591,7 @@ network_menu() {
 }
 
 # ============================================================
-# OPCIÓN 15: ENERGÍA Y RENDIMIENTO (COLOR: AMARILLO)
+# OPCIÓN 16: ENERGÍA Y RENDIMIENTO (COLOR: AMARILLO)
 # ============================================================
 
 is_laptop() {
@@ -5624,7 +5628,7 @@ set_power_profile() {
     local profile="$1"
     if ! command -v powerprofilesctl &> /dev/null; then
         if installed_pkgs tlp | grep -qx tlp; then
-            log_error "Usas TLP: los perfiles de energía los maneja TLP (quítalo en la opción 17 para usar estos)"
+            log_error "Usas TLP: los perfiles de energía los maneja TLP (quítalo en la opción 9 para usar estos)"
             return 1
         fi
         # Xubuntu, Lubuntu y otros no lo traen: es el servicio estándar de perfiles de energía
@@ -5899,11 +5903,11 @@ enable_steam_play() {
     if [ ! -f "$cfg" ]; then
         log_info "Abre Steam una vez e inicia sesión. Proton ya está activo para los juegos verificados;"
         log_info "para todos: Steam → Configuración → Compatibilidad → 'Activar Steam Play para todos los demás títulos'"
-        log_info "(o, con Steam cerrado, usa la opción 15 → 6 y se activa solo)"
+        log_info "(o, con Steam cerrado, usa la opción 16 → 6 y se activa solo)"
         return 0
     fi
     if pgrep -x steam &> /dev/null; then
-        log_warning "Steam está abierto: ciérralo y usa la opción 15 → 6 para activar Proton en todos los juegos"
+        log_warning "Steam está abierto: ciérralo y usa la opción 16 → 6 para activar Proton en todos los juegos"
         return 0
     fi
     tmp=$(mktemp)
@@ -6074,7 +6078,7 @@ power_menu() {
 }
 
 # ============================================================
-# OPCIÓN 16: PERFILES AUTOMÁTICOS (COLOR: PÚRPURA)
+# OPCIÓN 17: PERFILES AUTOMÁTICOS (COLOR: PÚRPURA)
 # ============================================================
 
 PROFILES=(
@@ -6252,7 +6256,7 @@ profiles_menu() {
 }
 
 # ============================================================
-# OPCIÓN 17: DESHACER OPTIMIZACIONES (COLOR: ROJO)
+# OPCIÓN 9: DESHACER OPTIMIZACIONES (COLOR: ROJO)
 # ============================================================
 
 # Programas que el script puede instalar. Sirve para ofrecer también los que se
@@ -6448,24 +6452,24 @@ undo_menu() {
         clear
         echo -e "${RED}${BOLD}"
         echo "╔══════════════════════════════════════════════════════════════════╗"
-        echo "║                    ↩️ DESHACER OPTIMIZACIONES                     ║"
+        echo "║                    🩹 DESHACER OPTIMIZACIONES                    ║"
         echo "╚══════════════════════════════════════════════════════════════════╝"
         echo -e "${NC}"
 
-        echo -e "  ${RED}1)${NC} 📦 Ver y quitar PROGRAMAS instalados por el script"
-        echo -e "  ${RED}2)${NC} 🔧 Restaurar ajustes del sistema (RAM, inotify, BBR...) a sus valores de fábrica"
-        echo -e "  ${RED}3)${NC} 💾 Desactivar ZRAM"
-        echo -e "  ${RED}4)${NC} 🔋 Quitar TLP y volver al selector de energía del escritorio"
-        echo -e "  ${RED}5)${NC} 📋 Ver qué AJUSTES están cambiados y restaurarlos todos (no toca programas)"
-        echo -e "  ${RED}6)${NC} 🍷 Quitar Proton-GE"
-        echo -e "  ${RED}7)${NC} 🤖 Quitar Android Studio y/o el SDK de Android"
-        echo -e "  ${RED}8)${NC} 📦 Quitar los SDK de Flatpak (KDE, GNOME, Freedesktop)"
-        echo -e "  ${RED}9)${NC} 🐳 Quitar Docker (conservando tus datos, o eliminación nuclear)"
-        echo -e "  ${RED}10)${NC} ☢️  ELIMINACIÓN NUCLEAR de todo lo de desarrollo (Android, Flatpak SDK, Docker)"
-        echo -e "      con respaldos antes de borrar"
-        echo -e "\n  ${RED}0)${NC} 🔙 Volver"
-        echo -e "\n${YELLOW}ℹ Otros cambios se deshacen en su menú: kernel (5), distribución original (9),${NC}"
-        echo -e "${YELLOW}  Snap (11), accesos directos (13), DNS/BBR/Wi-Fi (14), energía e indexador (15)${NC}\n"
+        echo -e "  ${RED} 1)${NC} 📦 Ver y quitar PROGRAMAS instalados por el script"
+        echo -e "  ${RED} 2)${NC} 🔧 Restaurar ajustes del sistema (RAM, inotify, BBR...) a sus valores de fábrica"
+        echo -e "  ${RED} 3)${NC} 💾 Desactivar ZRAM"
+        echo -e "  ${RED} 4)${NC} 🔋 Quitar TLP y volver al selector de energía del escritorio"
+        echo -e "  ${RED} 5)${NC} 📋 Ver qué AJUSTES están cambiados y restaurarlos todos (no toca programas)"
+        echo -e "  ${RED} 6)${NC} 🍷 Quitar Proton-GE"
+        echo -e "  ${RED} 7)${NC} 🤖 Quitar Android Studio y/o el SDK de Android"
+        echo -e "  ${RED} 8)${NC} 📦 Quitar los SDK de Flatpak (KDE, GNOME, Freedesktop)"
+        echo -e "  ${RED} 9)${NC} 🐳 Quitar Docker (conservando tus datos, o eliminación nuclear)"
+        echo -e "  ${RED}10)${NC} 💥 ELIMINACIÓN NUCLEAR de todo lo de desarrollo (Android, Flatpak SDK, Docker)"
+        echo -e "         con respaldos antes de borrar"
+        echo -e "\n  ${RED} 0)${NC} 🔙 Volver"
+        echo -e "\n${YELLOW}ℹ Otros cambios se deshacen en su menú: kernel (13), distribución original (10),${NC}"
+        echo -e "${YELLOW}  Snap (8), accesos directos (5), DNS/BBR/Wi-Fi (15), energía e indexador (16)${NC}\n"
         read -r -p "📌 Opción (0-10): " undo_option
 
         case $undo_option in
@@ -6495,7 +6499,7 @@ undo_menu() {
 }
 
 # ============================================================
-# OPCIÓN 18: INFORMACIÓN DEL SISTEMA Y HARDWARE (COLOR: CIAN)
+# OPCIÓN 2: INFORMACIÓN DEL SISTEMA Y HARDWARE (COLOR: CIAN)
 # ============================================================
 
 # Cada sección imprime texto sin colores: así sirve para la pantalla, para buscar
@@ -6615,7 +6619,7 @@ info_gpu() {
         show && /^[^\t]/ { sub(/^[^ ]+ [^:]+: /, ""); print "  " $0 }
         show && /Kernel driver in use/ { sub(/.*: /, ""); print "    Driver en uso: " $0 }'
     if LC_ALL=C lspci -k 2>/dev/null | grep -A3 -i nvidia | grep -q 'driver in use: nouveau'; then
-        echo "  ⚠ La NVIDIA usa el driver libre 'nouveau': para juegos instala el de NVIDIA (opción 14 → 6)"
+        echo "  ⚠ La NVIDIA usa el driver libre 'nouveau': para juegos instala el de NVIDIA (opción 15 → 6)"
     fi
 }
 
@@ -6631,7 +6635,7 @@ info_disks() {
             echo "  (smartmontools no está instalado)"
             return 0
         fi
-        echo -e "${CYAN}ℹ Para leer la salud de los discos hace falta smartmontools (se puede quitar en la opción 17)${NC}"
+        echo -e "${CYAN}ℹ Para leer la salud de los discos hace falta smartmontools (se puede quitar en la opción 9)${NC}"
         confirm "${CYAN}¿Instalarlo?${NC}" || return 0
         apt_update
         apt_install_recorded smartmontools || return 1
@@ -6862,7 +6866,7 @@ sysinfo_menu() {
         clear
         echo -e "${CYAN}${BOLD}"
         echo "╔══════════════════════════════════════════════════════════════════╗"
-        echo "║                    🖥️ INFORMACIÓN DEL SISTEMA                     ║"
+        echo "║                    📊 INFORMACIÓN DEL SISTEMA                    ║"
         echo "╚══════════════════════════════════════════════════════════════════╝"
         echo -e "${NC}"
         echo -e "${CYAN}👀 Vistas rápidas:${NC}"
@@ -6881,9 +6885,9 @@ sysinfo_menu() {
         echo -e "  ${CYAN}11)${NC} Diagnóstico: servicios fallidos, errores, arranque y procesos"
         echo -e "  ${CYAN}12)${NC} Qué cambió este script"
         echo -e "\n${CYAN}🧰 Herramientas:${NC}"
-        echo -e "  ${CYAN}13)${NC} 🔎 Buscar en toda la información"
-        echo -e "  ${CYAN}14)${NC} 💾 Guardar informe completo para compartir (sin datos personales)"
-        echo -e "  ${CYAN}15)${NC} ⏱️ Prueba de rendimiento (disco e internet)"
+        echo -e "  ${CYAN}13)${NC} Buscar en toda la información"
+        echo -e "  ${CYAN}14)${NC} Guardar informe completo para compartir (sin datos personales)"
+        echo -e "  ${CYAN}15)${NC} Prueba de rendimiento (disco e internet)"
         echo -e "\n  ${CYAN} 0)${NC} 🔙 Volver"
         echo ""
         read -r -p "📌 Opción (0-15): " option
@@ -6975,7 +6979,7 @@ migrate_from_kubuntu_lite() {
     [ -f "$GRUB_OTHERS_FIRST" ] && write_others_first_script
     log_success "Configuración de \"Kubuntu Lite\" pasada a \"Ubuntu Ultimate Tools\""
     if $grub_changed; then
-        regen_grub || log_warning "Revisa el menú de GRUB en la opción 12"
+        regen_grub || log_warning "Revisa el menú de GRUB en la opción 18"
     fi
 }
 
@@ -6988,27 +6992,31 @@ main_menu() {
         print_header
         echo -e "${CYAN}📌 ¿Qué deseas hacer?${NC}\n"
         echo -e "  ${CYAN} 1)${NC} 🔄 ACTUALIZAR SISTEMA (update/upgrade/clean)"
-        echo -e "  ${CYAN} 2)${NC} 🗑️  Eliminar aplicaciones preinstaladas"
+        echo -e "  ${CYAN} 2)${NC} 📊 Información del sistema y hardware"
+        echo ""
+        echo -e "  ${CYAN} 3)${NC} 🚮 Eliminar aplicaciones preinstaladas"
+        echo -e "  ${CYAN} 4)${NC} 💥 ELIMINACIÓN NUCLEAR DE SNAP"
+        echo -e "  ${CYAN} 5)${NC} 🧹 Quitar accesos directos (escritorio y panel)"
+        echo ""
+        echo -e "  ${CYAN} 6)${NC} 📦 Instalar software opcional"
+        echo -e "  ${CYAN} 7)${NC} 💻 Instalar Alacritty (terminal GPU) y temas"
+        echo -e "  ${CYAN} 8)${NC} 📥 Reinstalar Snap"
+        echo -e "  ${CYAN} 9)${NC} 🩹 Deshacer optimizaciones / quitar programas"
+        echo -e "  ${CYAN}10)${NC} ⏪ Revertir a distribución original"
+        echo ""
         if [ "$FLAVOR" = kubuntu ]; then
-            echo -e "  ${CYAN} 3)${NC} ⚙️  Configurar sistema (meta-paquete, manuales, Rolling Release solo Kubuntu)"
+            echo -e "  ${CYAN}11)${NC} 🔩 Configurar sistema (meta-paquete, manuales, Rolling Release solo Kubuntu)"
         else
-            echo -e "  ${CYAN} 3)${NC} ⚙️  Configurar sistema (meta-paquete y manuales)"
+            echo -e "  ${CYAN}11)${NC} 🔩 Configurar sistema (meta-paquete y manuales)"
         fi
-        echo -e "  ${CYAN} 4)${NC} 🎮 Optimizar GPU (NVIDIA/AMD/Intel)"
-        echo -e "  ${CYAN} 5)${NC} ⚡ Optimizar Kernel (Liquorix/XanMod/Estándar)"
-        echo -e "  ${CYAN} 6)${NC} 💾 Optimizar Memoria RAM (automático)"
-        echo -e "  ${CYAN} 7)${NC} 🖥️  Instalar Alacritty (terminal GPU) y temas"
-        echo -e "  ${CYAN} 8)${NC} 📦 Instalar software opcional"
-        echo -e "  ${CYAN} 9)${NC} ↩️  Revertir a distribución original"
-        echo -e "  ${CYAN}10)${NC} ☢️  ELIMINACION NUCLEAR DE SNAP"
-        echo -e "  ${CYAN}11)${NC} 🔄 REINSTALAR SNAP"
-        echo -e "  ${CYAN}12)${NC} 🔧 ARRANQUE: reparar y personalizar GRUB/EFI"
-        echo -e "  ${CYAN}13)${NC} 🧹 Quitar accesos directos (escritorio y panel)"
-        echo -e "  ${CYAN}14)${NC} 🌐 Red, DNS y drivers"
-        echo -e "  ${CYAN}15)${NC} 🔋 Energía y rendimiento"
-        echo -e "  ${CYAN}16)${NC} 🚀 PERFILES AUTOMÁTICOS (gaming, productividad...)"
-        echo -e "  ${CYAN}17)${NC} ↩️  Deshacer optimizaciones / quitar programas"
-        echo -e "  ${CYAN}18)${NC} 🖥️  Información del sistema y hardware"
+        echo -e "  ${CYAN}12)${NC} 🎮 Optimizar GPU (NVIDIA/AMD/Intel)"
+        echo -e "  ${CYAN}13)${NC} 🐧 Optimizar Kernel (Liquorix/XanMod/Estándar)"
+        echo -e "  ${CYAN}14)${NC} 💾 Optimizar Memoria RAM (automático)"
+        echo -e "  ${CYAN}15)${NC} 🌐 Red, DNS y drivers"
+        echo -e "  ${CYAN}16)${NC} 🔋 Energía y rendimiento"
+        echo -e "  ${CYAN}17)${NC} 🚀 PERFILES AUTOMÁTICOS (gaming, productividad...)"
+        echo -e "  ${CYAN}18)${NC} 🔧 ARRANQUE: reparar y personalizar GRUB/EFI"
+        echo ""
         echo -e "  ${CYAN}19)${NC} 🔌 Apagar / Reiniciar sistema"
         echo -e "\n  ${CYAN} 0)${NC} ❌ Salir"
         echo ""
@@ -7016,23 +7024,23 @@ main_menu() {
 
         case $option in
             1) system_update ;;
-            2) select_apps_to_remove ;;
-            3) configure_system ;;
-            4) optimize_gpu_menu ;;
-            5) optimize_kernel_menu ;;
-            6) optimize_ram_menu ;;
+            2) sysinfo_menu ;;
+            3) select_apps_to_remove ;;
+            4) nuclear_snap_removal ;;
+            5) remove_shortcuts_menu ;;
+            6) select_optional_software ;;
             7) install_custom_software ;;
-            8) select_optional_software ;;
-            9) revert_changes ;;
-            10) nuclear_snap_removal ;;
-            11) reinstall_snap ;;
-            12) grub_repair_menu ;;
-            13) remove_shortcuts_menu ;;
-            14) network_menu ;;
-            15) power_menu ;;
-            16) profiles_menu ;;
-            17) undo_menu ;;
-            18) sysinfo_menu ;;
+            8) reinstall_snap ;;
+            9) undo_menu ;;
+            10) revert_changes ;;
+            11) configure_system ;;
+            12) optimize_gpu_menu ;;
+            13) optimize_kernel_menu ;;
+            14) optimize_ram_menu ;;
+            15) network_menu ;;
+            16) power_menu ;;
+            17) profiles_menu ;;
+            18) grub_repair_menu ;;
             19) shutdown_menu ;;
             0)
                 echo -e "\n${GREEN}✅ ¡Hasta luego!${NC}"
