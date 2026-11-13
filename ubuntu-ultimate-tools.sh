@@ -6086,7 +6086,7 @@ PROFILES=(
     "gaming|Juegos: Steam + Proton, drivers, kernel Liquorix, GameMode, red de baja latencia"
     "ahorro|Ahorro de energía: TLP en portátiles, sin indexador, ZRAM"
     "desarrollo|Programación: git, compiladores, Python, VSCode, SDK de Android para APK"
-    "minimalista|Mínimo: sin meta-paquete ni apps extra, sin Snap, Firefox .deb (y Plasma más nuevo en Kubuntu)"
+    "minimalista|Mínimo: sin meta-paquete, apps extra ni Snap; Firefox .deb de Mozilla"
 )
 
 # Pasos de cada perfil: "Descripción|función [argumentos]"
