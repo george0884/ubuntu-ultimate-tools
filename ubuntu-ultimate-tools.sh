@@ -155,7 +155,7 @@ apt_install() { run "No se pudo instalar: $*" sudo env DEBIAN_FRONTEND=nonintera
 apt_purge() { run "No se pudo eliminar: $*" sudo env DEBIAN_FRONTEND=noninteractive apt-get purge "${APT_OPTS[@]}" "$@"; }
 
 # Instala y anota en INSTALLED_LIST los paquetes que NO estaban instalados antes,
-# para poder quitarlos después desde "Deshacer optimizaciones" (opción 18).
+# para poder quitarlos después desde "Deshacer optimizaciones" (opción 17).
 # Acepta nombres de paquete y rutas a archivos .deb.
 apt_install_recorded() {
     local new=() arg name
@@ -334,14 +334,14 @@ FLAVORS=(
     "ubuntu|Ubuntu|ubuntu-desktop-minimal|gnome|GNOME|gnome-shell"
 )
 
-# Detecta el sabor por su meta-paquete o, si se quitó (opción 2), por su escritorio
+# Detecta el sabor por su meta-paquete o, si se quitó (opción 3), por su escritorio
 detect_flavor() {
     local entry meta marker found=""
     for entry in "${FLAVORS[@]}"; do
         IFS='|' read -r _ _ meta _ _ marker <<< "$entry"
         if installed_pkgs "$meta" | grep -qx -- "$meta"; then found=$entry; break; fi
     done
-    # Si se quitó con la opción 2, queda anotado: así un Ubuntu mínimo no se confunde con el completo
+    # Si se quitó con la opción 3, queda anotado: así un Ubuntu mínimo no se confunde con el completo
     if [ -z "$found" ] && [ -s "$REMOVED_LIST" ]; then
         for entry in "${FLAVORS[@]}"; do
             IFS='|' read -r _ _ meta _ _ _ <<< "$entry"
@@ -649,7 +649,7 @@ CORE_PKGS=(plasma-desktop plasma-workspace kwin-x11 kwin-wayland systemsettings 
     sudo systemd policykit-1 polkitd ubuntu-minimal ubuntu-standard grub-common linux-generic)
 
 # ============================================================
-# OPCIÓN 1: ELIMINAR APLICACIONES (COLOR: CIAN)
+# OPCIÓN 2: ELIMINAR APLICACIONES (COLOR: CIAN)
 # ============================================================
 
 select_apps_to_remove() {
@@ -705,7 +705,7 @@ select_apps_to_remove() {
 }
 
 # ============================================================
-# OPCIÓN 2: CONFIGURAR SISTEMA (COLOR: VERDE)
+# OPCIÓN 3: CONFIGURAR SISTEMA (COLOR: VERDE)
 # ============================================================
 
 remove_flavor_meta() {
@@ -713,7 +713,7 @@ remove_flavor_meta() {
         echo -e "  ${YELLOW}ℹ El meta-paquete de ${FLAVOR_NAME} ya no está instalado${NC}"
         return 0
     fi
-    # Sin el meta-paquete, sus apps quedan "huérfanas" y 'apt autoremove' (opción 6)
+    # Sin el meta-paquete, sus apps quedan "huérfanas" y 'apt autoremove' (opción 1)
     # las borraría. Se marcan como instaladas manualmente para conservarlas.
     local kd_pkgs
     # shellcheck disable=SC2046  # listas de paquetes: se separan a propósito
@@ -802,7 +802,7 @@ configure_system() {
 }
 
 # ============================================================
-# OPCIÓN 3: OPTIMIZACIÓN DE GPU (COLOR: MAGENTA)
+# OPCIÓN 4: OPTIMIZACIÓN DE GPU (COLOR: MAGENTA)
 # ============================================================
 
 optimize_gpu_menu() {
@@ -927,7 +927,7 @@ auto_detect_gpu() {
 }
 
 # ============================================================
-# OPCIÓN 4: OPTIMIZACIÓN DE KERNEL (COLOR: AZUL)
+# OPCIÓN 5: OPTIMIZACIÓN DE KERNEL (COLOR: AZUL)
 # ============================================================
 
 optimize_kernel_menu() {
@@ -1554,7 +1554,7 @@ advanced_kernel_tweaks() {
 }
 
 # ============================================================
-# OPCIÓN 5: OPTIMIZACIÓN DE MEMORIA RAM (COLOR: AMARILLO)
+# OPCIÓN 6: OPTIMIZACIÓN DE MEMORIA RAM (COLOR: AMARILLO)
 # ============================================================
 
 apply_ram_tweaks() {
@@ -1606,7 +1606,7 @@ optimize_ram_menu() {
 }
 
 # ============================================================
-# OPCIÓN 6: ACTUALIZACIÓN DEL SISTEMA (COLOR: VERDE)
+# OPCIÓN 1: ACTUALIZACIÓN DEL SISTEMA (COLOR: VERDE)
 # ============================================================
 
 do_system_update() {
@@ -2634,7 +2634,7 @@ remove_apps_with_progress() {
     fi
 
     echo -e "${CYAN}══════════════════════════════════════════════════════════════════${NC}"
-    $AUTO_MODE || echo -e "${CYAN}ℹ Para quitar los íconos del escritorio o del panel usa la opción 14${NC}"
+    $AUTO_MODE || echo -e "${CYAN}ℹ Para quitar los íconos del escritorio o del panel usa la opción 13${NC}"
     echo ""
 }
 
@@ -2895,8 +2895,8 @@ revert_changes() {
         echo -e "  • Restaurar el tema del escritorio (si el script lo cambió)"
     fi
     echo -e "  • Volver a los valores de fábrica los ajustes del script (RAM, DNS, ZRAM, energía...)"
-    echo -e "\n${YELLOW}ℹ No cambia el kernel (opción 4) ni el arranque (opción 12). Los programas que instaló${NC}"
-    echo -e "${YELLOW}  el script se quitan desde la opción 18.${NC}"
+    echo -e "\n${YELLOW}ℹ No cambia el kernel (opción 5) ni el arranque (opción 12). Los programas que instaló${NC}"
+    echo -e "${YELLOW}  el script se quitan desde la opción 17.${NC}"
     echo ""
 
     if ! confirm "${RED}⚠ ¿Revertir a la distribución original (${FLAVOR_NAME})?${NC}"; then
@@ -5056,7 +5056,7 @@ EXPL
 }
 
 # ============================================================
-# OPCIÓN 13: APAGAR O REINICIAR (COLOR: AMARILLO)
+# OPCIÓN 19: APAGAR O REINICIAR (COLOR: AMARILLO)
 # ============================================================
 
 shutdown_menu() {
@@ -5094,7 +5094,7 @@ shutdown_menu() {
 }
 
 # ============================================================
-# OPCIÓN 14: QUITAR ACCESOS DIRECTOS (COLOR: CIAN)
+# OPCIÓN 13: QUITAR ACCESOS DIRECTOS (COLOR: CIAN)
 # ============================================================
 
 PLASMA_APPLETSRC="$HOME/.config/plasma-org.kde.plasma.desktop-appletsrc"
@@ -5332,7 +5332,7 @@ remove_shortcuts_menu() {
 }
 
 # ============================================================
-# OPCIÓN 15: RED, DNS Y DRIVERS (COLOR: AZUL)
+# OPCIÓN 14: RED, DNS Y DRIVERS (COLOR: AZUL)
 # ============================================================
 
 RESOLVED_DNS_CONF="/etc/systemd/resolved.conf.d/99-ubuntu-ultimate-tools-dns.conf"
@@ -5587,7 +5587,7 @@ network_menu() {
 }
 
 # ============================================================
-# OPCIÓN 16: ENERGÍA Y RENDIMIENTO (COLOR: AMARILLO)
+# OPCIÓN 15: ENERGÍA Y RENDIMIENTO (COLOR: AMARILLO)
 # ============================================================
 
 is_laptop() {
@@ -5624,7 +5624,7 @@ set_power_profile() {
     local profile="$1"
     if ! command -v powerprofilesctl &> /dev/null; then
         if installed_pkgs tlp | grep -qx tlp; then
-            log_error "Usas TLP: los perfiles de energía los maneja TLP (quítalo en la opción 18 para usar estos)"
+            log_error "Usas TLP: los perfiles de energía los maneja TLP (quítalo en la opción 17 para usar estos)"
             return 1
         fi
         # Xubuntu, Lubuntu y otros no lo traen: es el servicio estándar de perfiles de energía
@@ -5899,11 +5899,11 @@ enable_steam_play() {
     if [ ! -f "$cfg" ]; then
         log_info "Abre Steam una vez e inicia sesión. Proton ya está activo para los juegos verificados;"
         log_info "para todos: Steam → Configuración → Compatibilidad → 'Activar Steam Play para todos los demás títulos'"
-        log_info "(o, con Steam cerrado, usa la opción 16 → 6 y se activa solo)"
+        log_info "(o, con Steam cerrado, usa la opción 15 → 6 y se activa solo)"
         return 0
     fi
     if pgrep -x steam &> /dev/null; then
-        log_warning "Steam está abierto: ciérralo y usa la opción 16 → 6 para activar Proton en todos los juegos"
+        log_warning "Steam está abierto: ciérralo y usa la opción 15 → 6 para activar Proton en todos los juegos"
         return 0
     fi
     tmp=$(mktemp)
@@ -6074,7 +6074,7 @@ power_menu() {
 }
 
 # ============================================================
-# OPCIÓN 17: PERFILES AUTOMÁTICOS (COLOR: PÚRPURA)
+# OPCIÓN 16: PERFILES AUTOMÁTICOS (COLOR: PÚRPURA)
 # ============================================================
 
 PROFILES=(
@@ -6252,7 +6252,7 @@ profiles_menu() {
 }
 
 # ============================================================
-# OPCIÓN 18: DESHACER OPTIMIZACIONES (COLOR: ROJO)
+# OPCIÓN 17: DESHACER OPTIMIZACIONES (COLOR: ROJO)
 # ============================================================
 
 # Programas que el script puede instalar. Sirve para ofrecer también los que se
@@ -6464,8 +6464,8 @@ undo_menu() {
         echo -e "  ${RED}10)${NC} ☢️  ELIMINACIÓN NUCLEAR de todo lo de desarrollo (Android, Flatpak SDK, Docker)"
         echo -e "      con respaldos antes de borrar"
         echo -e "\n  ${RED}0)${NC} 🔙 Volver"
-        echo -e "\n${YELLOW}ℹ Otros cambios se deshacen en su menú: kernel (4), distribución original (9),${NC}"
-        echo -e "${YELLOW}  Snap (11), accesos directos (14), DNS/BBR/Wi-Fi (15), energía e indexador (16)${NC}\n"
+        echo -e "\n${YELLOW}ℹ Otros cambios se deshacen en su menú: kernel (5), distribución original (9),${NC}"
+        echo -e "${YELLOW}  Snap (11), accesos directos (13), DNS/BBR/Wi-Fi (14), energía e indexador (15)${NC}\n"
         read -r -p "📌 Opción (0-10): " undo_option
 
         case $undo_option in
@@ -6495,7 +6495,7 @@ undo_menu() {
 }
 
 # ============================================================
-# OPCIÓN 19: INFORMACIÓN DEL SISTEMA Y HARDWARE (COLOR: CIAN)
+# OPCIÓN 18: INFORMACIÓN DEL SISTEMA Y HARDWARE (COLOR: CIAN)
 # ============================================================
 
 # Cada sección imprime texto sin colores: así sirve para la pantalla, para buscar
@@ -6615,7 +6615,7 @@ info_gpu() {
         show && /^[^\t]/ { sub(/^[^ ]+ [^:]+: /, ""); print "  " $0 }
         show && /Kernel driver in use/ { sub(/.*: /, ""); print "    Driver en uso: " $0 }'
     if LC_ALL=C lspci -k 2>/dev/null | grep -A3 -i nvidia | grep -q 'driver in use: nouveau'; then
-        echo "  ⚠ La NVIDIA usa el driver libre 'nouveau': para juegos instala el de NVIDIA (opción 15 → 6)"
+        echo "  ⚠ La NVIDIA usa el driver libre 'nouveau': para juegos instala el de NVIDIA (opción 14 → 6)"
     fi
 }
 
@@ -6631,7 +6631,7 @@ info_disks() {
             echo "  (smartmontools no está instalado)"
             return 0
         fi
-        echo -e "${CYAN}ℹ Para leer la salud de los discos hace falta smartmontools (se puede quitar en la opción 18)${NC}"
+        echo -e "${CYAN}ℹ Para leer la salud de los discos hace falta smartmontools (se puede quitar en la opción 17)${NC}"
         confirm "${CYAN}¿Instalarlo?${NC}" || return 0
         apt_update
         apt_install_recorded smartmontools || return 1
@@ -6987,53 +6987,53 @@ main_menu() {
     while true; do
         print_header
         echo -e "${CYAN}📌 ¿Qué deseas hacer?${NC}\n"
-        echo -e "  ${CYAN} 1)${NC} 🗑️  Eliminar aplicaciones preinstaladas"
+        echo -e "  ${CYAN} 1)${NC} 🔄 ACTUALIZAR SISTEMA (update/upgrade/clean)"
+        echo -e "  ${CYAN} 2)${NC} 🗑️  Eliminar aplicaciones preinstaladas"
         if [ "$FLAVOR" = kubuntu ]; then
-            echo -e "  ${CYAN} 2)${NC} ⚙️  Configurar sistema (meta-paquete, manuales, Rolling Release solo Kubuntu)"
+            echo -e "  ${CYAN} 3)${NC} ⚙️  Configurar sistema (meta-paquete, manuales, Rolling Release solo Kubuntu)"
         else
-            echo -e "  ${CYAN} 2)${NC} ⚙️  Configurar sistema (meta-paquete y manuales)"
+            echo -e "  ${CYAN} 3)${NC} ⚙️  Configurar sistema (meta-paquete y manuales)"
         fi
-        echo -e "  ${CYAN} 3)${NC} 🎮 Optimizar GPU (NVIDIA/AMD/Intel)"
-        echo -e "  ${CYAN} 4)${NC} ⚡ Optimizar Kernel (Liquorix/XanMod/Estándar)"
-        echo -e "  ${CYAN} 5)${NC} 💾 Optimizar Memoria RAM (automático)"
-        echo -e "  ${CYAN} 6)${NC} 🔄 ACTUALIZAR SISTEMA (update/upgrade/clean)"
+        echo -e "  ${CYAN} 4)${NC} 🎮 Optimizar GPU (NVIDIA/AMD/Intel)"
+        echo -e "  ${CYAN} 5)${NC} ⚡ Optimizar Kernel (Liquorix/XanMod/Estándar)"
+        echo -e "  ${CYAN} 6)${NC} 💾 Optimizar Memoria RAM (automático)"
         echo -e "  ${CYAN} 7)${NC} 🖥️  Instalar Alacritty (terminal GPU) y temas"
         echo -e "  ${CYAN} 8)${NC} 📦 Instalar software opcional"
         echo -e "  ${CYAN} 9)${NC} ↩️  Revertir a distribución original"
         echo -e "  ${CYAN}10)${NC} ☢️  ELIMINACION NUCLEAR DE SNAP"
         echo -e "  ${CYAN}11)${NC} 🔄 REINSTALAR SNAP"
         echo -e "  ${CYAN}12)${NC} 🔧 ARRANQUE: reparar y personalizar GRUB/EFI"
-        echo -e "  ${CYAN}13)${NC} 🔌 Apagar / Reiniciar sistema"
-        echo -e "  ${CYAN}14)${NC} 🧹 Quitar accesos directos (escritorio y panel)"
-        echo -e "  ${CYAN}15)${NC} 🌐 Red, DNS y drivers"
-        echo -e "  ${CYAN}16)${NC} 🔋 Energía y rendimiento"
-        echo -e "  ${CYAN}17)${NC} 🚀 PERFILES AUTOMÁTICOS (gaming, productividad...)"
-        echo -e "  ${CYAN}18)${NC} ↩️  Deshacer optimizaciones / quitar programas"
-        echo -e "  ${CYAN}19)${NC} 🖥️  Información del sistema y hardware"
+        echo -e "  ${CYAN}13)${NC} 🧹 Quitar accesos directos (escritorio y panel)"
+        echo -e "  ${CYAN}14)${NC} 🌐 Red, DNS y drivers"
+        echo -e "  ${CYAN}15)${NC} 🔋 Energía y rendimiento"
+        echo -e "  ${CYAN}16)${NC} 🚀 PERFILES AUTOMÁTICOS (gaming, productividad...)"
+        echo -e "  ${CYAN}17)${NC} ↩️  Deshacer optimizaciones / quitar programas"
+        echo -e "  ${CYAN}18)${NC} 🖥️  Información del sistema y hardware"
+        echo -e "  ${CYAN}19)${NC} 🔌 Apagar / Reiniciar sistema"
         echo -e "\n  ${CYAN} 0)${NC} ❌ Salir"
         echo ""
         read -r -p "🔢 Opción (0-19): " option
 
         case $option in
-            1) select_apps_to_remove ;;
-            2) configure_system ;;
-            3) optimize_gpu_menu ;;
-            4) optimize_kernel_menu ;;
-            5) optimize_ram_menu ;;
-            6) system_update ;;
+            1) system_update ;;
+            2) select_apps_to_remove ;;
+            3) configure_system ;;
+            4) optimize_gpu_menu ;;
+            5) optimize_kernel_menu ;;
+            6) optimize_ram_menu ;;
             7) install_custom_software ;;
             8) select_optional_software ;;
             9) revert_changes ;;
             10) nuclear_snap_removal ;;
             11) reinstall_snap ;;
             12) grub_repair_menu ;;
-            13) shutdown_menu ;;
-            14) remove_shortcuts_menu ;;
-            15) network_menu ;;
-            16) power_menu ;;
-            17) profiles_menu ;;
-            18) undo_menu ;;
-            19) sysinfo_menu ;;
+            13) remove_shortcuts_menu ;;
+            14) network_menu ;;
+            15) power_menu ;;
+            16) profiles_menu ;;
+            17) undo_menu ;;
+            18) sysinfo_menu ;;
+            19) shutdown_menu ;;
             0)
                 echo -e "\n${GREEN}✅ ¡Hasta luego!${NC}"
                 exit 0

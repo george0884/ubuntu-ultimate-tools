@@ -13,21 +13,21 @@ sabor y el escritorio detectados, y las listas muestran solo lo que está instal
 
 ---
 
-## Eliminar aplicaciones (opción 1) — lista con casillas
+## Eliminar aplicaciones (opción 2) — lista con casillas
 
-![Eliminar aplicaciones (opción 1) — lista con casillas](02-eliminar-apps.png)
-
----
-
-## Optimizar GPU (opción 3)
-
-![Optimizar GPU (opción 3)](03-gpu.png)
+![Eliminar aplicaciones (opción 2) — lista con casillas](02-eliminar-apps.png)
 
 ---
 
-## Optimizar kernel (opción 4)
+## Optimizar GPU (opción 4)
 
-![Optimizar kernel (opción 4)](04-kernel.png)
+![Optimizar GPU (opción 4)](03-gpu.png)
+
+---
+
+## Optimizar kernel (opción 5)
+
+![Optimizar kernel (opción 5)](04-kernel.png)
 
 ---
 
@@ -67,42 +67,42 @@ sabor y el escritorio detectados, y las listas muestran solo lo que está instal
 
 ---
 
-## Quitar accesos directos (opción 14)
+## Quitar accesos directos (opción 13)
 
-![Quitar accesos directos (opción 14)](09-accesos-directos.png)
-
----
-
-## Red, DNS y drivers (opción 15)
-
-![Red, DNS y drivers (opción 15)](10-red-dns-drivers.png)
+![Quitar accesos directos (opción 13)](09-accesos-directos.png)
 
 ---
 
-## Energía y rendimiento (opción 16)
+## Red, DNS y drivers (opción 14)
 
-![Energía y rendimiento (opción 16)](11-energia.png)
-
----
-
-## Perfiles automáticos (opción 17)
-
-![Perfiles automáticos (opción 17)](12-perfiles.png)
+![Red, DNS y drivers (opción 14)](10-red-dns-drivers.png)
 
 ---
 
-## Deshacer optimizaciones (opción 18)
+## Energía y rendimiento (opción 15)
 
-![Deshacer optimizaciones (opción 18)](13-deshacer.png)
-
----
-
-## Información del sistema y hardware (opción 19)
-
-![Información del sistema y hardware (opción 19)](14-informacion-sistema.png)
+![Energía y rendimiento (opción 15)](11-energia.png)
 
 ---
 
-## Resumen rápido del sistema (opción 19 → 1)
+## Perfiles automáticos (opción 16)
 
-![Resumen rápido del sistema (opción 19 → 1)](15-resumen-sistema.png)
+![Perfiles automáticos (opción 16)](12-perfiles.png)
+
+---
+
+## Deshacer optimizaciones (opción 17)
+
+![Deshacer optimizaciones (opción 17)](13-deshacer.png)
+
+---
+
+## Información del sistema y hardware (opción 18)
+
+![Información del sistema y hardware (opción 18)](14-informacion-sistema.png)
+
+---
+
+## Resumen rápido del sistema (opción 18 → 1)
+
+![Resumen rápido del sistema (opción 18 → 1)](15-resumen-sistema.png)

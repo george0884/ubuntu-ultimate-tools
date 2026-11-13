@@ -50,7 +50,7 @@ sin importar el sabor. Al iniciar **detecta qué sabor y qué escritorio tienes*
 | **Ubuntu Server** | sin escritorio | Kernel, GRUB, red, RAM, Snap y actualizaciones |
 
 El sabor se detecta por su meta-paquete (`kubuntu-desktop`, `xubuntu-desktop`...). Si lo quitaste con la
-opción 2, se reconoce por su escritorio. Las opciones que no aplican a tu escritorio lo explican y no hacen nada.
+opción 3, se reconoce por su escritorio. Las opciones que no aplican a tu escritorio lo explican y no hacen nada.
 
 ---
 
@@ -102,7 +102,7 @@ chmod +x ubuntu-ultimate-tools.sh
 
 ## 🚀 Perfiles automáticos
 
-Aplican varias optimizaciones de una vez, sin preguntas intermedias. Se eligen desde el menú (opción 17)
+Aplican varias optimizaciones de una vez, sin preguntas intermedias. Se eligen desde el menú (opción 16)
 o desde la terminal:
 
 ```bash
@@ -126,7 +126,7 @@ o desde la terminal:
 
 ---
 
-## 🌐 Red, DNS y drivers (opción 15)
+## 🌐 Red, DNS y drivers (opción 14)
 
 - **DNS**: Cloudflare, Cloudflare con bloqueo de malware, Google, Quad9 o AdGuard (bloquea anuncios), con DNS
   cifrado cuando el servidor lo permite. También puede **medir cuál responde más rápido** desde tu conexión.
@@ -140,7 +140,7 @@ o desde la terminal:
 
 ---
 
-## 🔋 Energía y rendimiento (opción 16)
+## 🔋 Energía y rendimiento (opción 15)
 
 Perfiles rendimiento / equilibrado / ahorro, TLP para portátiles, activar o desactivar el indexador
 de archivos Baloo, y herramientas de juego: GameMode, MangoHud, Steam y Proton-GE.
@@ -154,12 +154,12 @@ Shift derecho + F12 oculta el panel · Shift izquierdo + F2 pausa/reanuda la gra
 - **Steam**: se instala el `.deb` oficial de Valve y se activan las librerías de 32 bits (`i386`) que necesitan
   Steam y los juegos, incluida la parte de 32 bits del driver de NVIDIA si lo usas.
 - **Proton** viene dentro de Steam. El script lo activa para **todos los juegos** (Proton Experimental):
-  si Steam todavía no se abrió nunca, ábrelo una vez, inicia sesión, ciérralo y usa la opción 16 → 6;
+  si Steam todavía no se abrió nunca, ábrelo una vez, inicia sesión, ciérralo y usa la opción 15 → 6;
   o actívalo a mano en *Steam → Configuración → Compatibilidad*. Si ya elegiste una versión, no se cambia.
 - **Proton-GE**: la última versión se descarga de la página oficial del proyecto, se comprueba que llegó
   entera (suma SHA-512) y se instala en `compatibilitytools.d`. Se elige por juego en
   *Propiedades → Compatibilidad*. Funciona también con Steam de Flatpak.
-- Se quitan desde la opción 18: Steam en "Quitar programas" y Proton-GE en "Quitar Proton-GE".
+- Se quitan desde la opción 17: Steam en "Quitar programas" y Proton-GE en "Quitar Proton-GE".
 
 ---
 
@@ -254,14 +254,14 @@ bash ubuntu-ultimate-tools.sh      # opción 12 → 10
 
 ## ☑️ Selección con barra espaciadora
 
-En "Eliminar aplicaciones" (opción 1) y "Software opcional" (opción 8) las listas usan casillas:
+En "Eliminar aplicaciones" (opción 2) y "Software opcional" (opción 8) las listas usan casillas:
 **Espacio** marca o desmarca, **flechas** para moverse, **Enter** para aceptar. La lista de eliminación
 solo muestra las apps instaladas, y la de software marca las que ya tienes. Si `whiptail` no está
 disponible, se vuelve a la selección escribiendo números.
 
 ---
 
-## ↩️ Deshacer optimizaciones (opción 18)
+## ↩️ Deshacer optimizaciones (opción 17)
 
 - **Quitar programas instalados por el script**, con casillas. El script anota en
   `~/.local/share/ubuntu-ultimate-tools/paquetes-instalados.txt` solo los programas que **no tenías antes**;
@@ -284,7 +284,7 @@ En todos los menús y submenús, **0** vuelve al menú anterior (en el principal
 
 ---
 
-## 🖥️ Información del sistema y hardware (opción 19)
+## 🖥️ Información del sistema y hardware (opción 18)
 
 | | Opción | Qué muestra |
 |---|---|---|
@@ -312,11 +312,11 @@ En todos los menús y submenús, **0** vuelve al menú anterior (en el principal
 - Los `.deb` externos (VSCode, Chrome, Discord) se descargan en paralelo.
 - `apt update` se ejecuta una vez por sesión (o se omite si el sistema lo hizo hace menos de 30 minutos).
 - Cambiar de kernel no regenera GRUB: se usa `GRUB_DEFAULT=saved` + `grub-set-default`.
-- La opción 2 permite desactivar la indexación de manuales (`man-db`), lo más lento de cada instalación.
+- La opción 3 permite desactivar la indexación de manuales (`man-db`), lo más lento de cada instalación.
 
 ---
 
-## ⚡ Cambio de kernel
+## ⚡ Cambio de kernel (opción 5)
 
 | Opción | Kernel | Notas |
 |--------|--------|-------|
@@ -345,7 +345,7 @@ Dentro de la opción 3:
 Deja tu Ubuntu como vino de fábrica, sea cual sea el sabor (muestra cuál detectó antes de empezar):
 
 - Reinstala el meta-paquete de tu sabor **con todas sus aplicaciones** (`kubuntu-desktop`, `xubuntu-desktop`,
-  `ubuntu-desktop-minimal`...). Si lo quitaste con la opción 2, recuerda cuál era: un Ubuntu mínimo no se
+  `ubuntu-desktop-minimal`...). Si lo quitaste con la opción 3, recuerda cuál era: un Ubuntu mínimo no se
   convierte en uno completo.
 - Reinstala todo lo que el script eliminó (incluidas dependencias); la lista está en
   `~/.local/share/ubuntu-ultimate-tools/paquetes-eliminados.txt`.
@@ -358,8 +358,8 @@ Deja tu Ubuntu como vino de fábrica, sea cual sea el sabor (muestra cuál detec
 - Vuelve a fábrica todos los ajustes (RAM, DNS, ZRAM, energía, indexador...).
 - En Ubuntu Server hace lo que aplica: paquetes, Snap y ajustes.
 
-No cambia el kernel (opción 4) ni el arranque (opción 12). Los programas que instaló el script se quitan
-desde la opción 18.
+No cambia el kernel (opción 5) ni el arranque (opción 12). Los programas que instaló el script se quitan
+desde la opción 17.
 
 ---
 
@@ -407,8 +407,8 @@ cd mi-proyecto
 - **NDK y CMake** (proyectos con C/C++): Gradle baja solo la versión exacta que pide el proyecto,
   porque el script ya aceptó las licencias del SDK.
 - **Actualizar**: vuelve a usar la opción 8 → Compilar APK y se actualiza el SDK.
-- **Quitar**: opción 18 → 7 (Android Studio y SDK; tus claves de firma en `~/.android` no se tocan)
-  y 18 → 8 (SDK de Flatpak).
+- **Quitar**: opción 17 → 7 (Android Studio y SDK; tus claves de firma en `~/.android` no se tocan)
+  y 17 → 8 (SDK de Flatpak).
 
 ### 🐳 Compilar con Docker
 
@@ -424,7 +424,7 @@ docker run --rm -v "$PWD":/home/source mi-compilador  # la ruta la indica el REA
 - Para usar `docker` sin `sudo`, el script ofrece sumar tu usuario al grupo `docker` (avisa que ese grupo
   equivale a ser administrador).
 - Si había configuración de un Docker anterior, se guarda un respaldo antes de instalar.
-- **Quitar** (opción 18 → 9): solo los programas, conservando imágenes y volúmenes; o la **eliminación
+- **Quitar** (opción 17 → 9): solo los programas, conservando imágenes y volúmenes; o la **eliminación
   nuclear**, que borra todo (datos, configuración y grupo) después de guardar un respaldo de la
   configuración y, si quieres, de tus volúmenes.
 
@@ -437,7 +437,7 @@ Android (`~/.android`). Nunca se pisa un respaldo anterior.
 
 ---
 
-## 🗑️ Aplicaciones que puedes eliminar (opción 1)
+## 🗑️ Aplicaciones que puedes eliminar (opción 2)
 
 La lista sale de los **meta-paquetes reales de cada sabor**, con dos filtros:
 
@@ -463,13 +463,13 @@ graph LR
     E --> F[Reiniciar]
 ```
 
-Si algo no te convence, la opción 18 deshace optimizaciones y quita programas, y la 9 vuelve a la distribución original.
+Si algo no te convence, la opción 17 deshace optimizaciones y quita programas, y la 9 vuelve a la distribución original.
 
 ---
 
 ## 🛡️ Seguridad
 
-- ✅ **Reversible**: cada ajuste se puede deshacer (opción 18) y todo se puede revertir (opción 9).
+- ✅ **Reversible**: cada ajuste se puede deshacer (opción 17) y todo se puede revertir (opción 9).
 - ✅ **Confirmaciones**: cada acción importante pide confirmación y muestra qué se va a cambiar.
 - ✅ **Seguro de dependencias**: nunca quita una app que arrastre piezas esenciales del sistema.
 - ✅ **Copias antes de tocar el arranque**: `/etc/default/grub` se guarda antes del primer cambio, y `/etc/grub.d` entero antes de deshacer Grub Customizer.
@@ -499,7 +499,7 @@ Firefox y la tienda Snap se eliminarán. En Ubuntu `apt install firefox` solo in
 
 **¿Cómo vuelvo atrás?**
 
-Para quitar ajustes o programas sueltos, usa la opción 18. Para volver del todo, la opción 9: reinstala el meta-paquete de tu sabor con todas sus apps y restaura Snap.
+Para quitar ajustes o programas sueltos, usa la opción 17. Para volver del todo, la opción 9: reinstala el meta-paquete de tu sabor con todas sus apps y restaura Snap.
 
 **¿Usaba la versión anterior, "Kubuntu Lite"?**
 
